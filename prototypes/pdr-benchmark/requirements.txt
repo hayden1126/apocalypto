@@ -1,0 +1,14 @@
+# PDR + map-matching benchmark harness (step 1)
+# Pinned loosely; this is a research spike, not a shipped lib.
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+ahrs>=0.3.1            # attitude/heading filters (Madgwick, Mahony, EKF)
+osmnx>=1.9            # OSM walk graph -> networkx, GraphML cache
+leuvenmapmatching>=1.1  # pure-Python HMM map-matching with non-emitting states
+matplotlib>=3.8
+pyproj>=3.6           # lat/lon <-> UTM
+shapely>=2.0
+networkx>=3.2
+rtree>=1.1            # spatial index for leuven matcher
+pytest>=8.0
