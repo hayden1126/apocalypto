@@ -1,0 +1,524 @@
+<title>Offline Apocalypse Navigation — Research Brief</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    --ground:#e8ecec; --surface:#f3f6f6; --surface-2:#fbfdfd;
+    --line:#c9d3d4; --line-strong:#aab8ba;
+    --ink:#16242a; --ink-dim:#46585e; --ink-faint:#6d7f84;
+    --accent:#d8451c; --accent-ink:#ffffff;
+    --ok:#2f8f6b; --warn:#a9761a; --bad:#c14338;
+    --ok-bg:#e2efe9; --warn-bg:#f2e8d1; --bad-bg:#f4e0dd;
+    --contour:rgba(20,45,50,0.055);
+    --shadow:0 1px 2px rgba(20,40,45,.06),0 8px 24px rgba(20,40,45,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ground:#0d1316; --surface:#141c20; --surface-2:#1b262b;
+      --line:#28363c; --line-strong:#3a4c53;
+      --ink:#e2eaeb; --ink-dim:#9aabae; --ink-faint:#67797e;
+      --accent:#ff6a3d; --accent-ink:#1a0f0a;
+      --ok:#43b98d; --warn:#e0ad4c; --bad:#e0665b;
+      --ok-bg:rgba(67,185,141,.13); --warn-bg:rgba(224,173,76,.13); --bad-bg:rgba(224,102,91,.13);
+      --contour:rgba(120,195,205,.055);
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#e8ecec; --surface:#f3f6f6; --surface-2:#fbfdfd;
+    --line:#c9d3d4; --line-strong:#aab8ba;
+    --ink:#16242a; --ink-dim:#46585e; --ink-faint:#6d7f84;
+    --accent:#d8451c; --accent-ink:#ffffff;
+    --ok:#2f8f6b; --warn:#a9761a; --bad:#c14338;
+    --ok-bg:#e2efe9; --warn-bg:#f2e8d1; --bad-bg:#f4e0dd;
+    --contour:rgba(20,45,50,0.055);
+    --shadow:0 1px 2px rgba(20,40,45,.06),0 8px 24px rgba(20,40,45,.06);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0d1316; --surface:#141c20; --surface-2:#1b262b;
+    --line:#28363c; --line-strong:#3a4c53;
+    --ink:#e2eaeb; --ink-dim:#9aabae; --ink-faint:#67797e;
+    --accent:#ff6a3d; --accent-ink:#1a0f0a;
+    --ok:#43b98d; --warn:#e0ad4c; --bad:#e0665b;
+    --ok-bg:rgba(67,185,141,.13); --warn-bg:rgba(224,173,76,.13); --bad-bg:rgba(224,102,91,.13);
+    --contour:rgba(120,195,205,.055);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace}
+  .shell{max-width:1060px; margin:0 auto; padding:0 22px 96px}
+
+  /* ---------- masthead ---------- */
+  .masthead{position:relative; overflow:hidden; border-bottom:1px solid var(--line);
+    margin-bottom:0; padding:0}
+  .masthead canvas{position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none}
+  .masthead__inner{position:relative; z-index:1; max-width:1060px; margin:0 auto; padding:64px 22px 40px}
+  .eyebrow{font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    font-size:.72rem; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-dim);
+    display:flex; align-items:center; gap:.7em; flex-wrap:wrap}
+  .eyebrow .tick{width:26px; height:2px; background:var(--accent); display:inline-block}
+  h1.title{font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    font-weight:600; letter-spacing:-.01em; line-height:1.04; text-wrap:balance;
+    font-size:clamp(2.05rem,5.4vw,3.35rem); margin:.5em 0 .35em; max-width:20ch}
+  .lede{font-size:clamp(1.02rem,1.6vw,1.2rem); color:var(--ink-dim); max-width:60ch; margin:0}
+  .lede b{color:var(--ink); font-weight:600}
+
+  .metabar{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-top:34px;
+    background:var(--line); border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .metabar .cell{background:var(--surface); padding:12px 14px; display:flex; flex-direction:column; gap:3px}
+  .metabar .k{font-family:ui-monospace,Menlo,monospace; font-size:.63rem; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--ink-faint)}
+  .metabar .v{font-size:.9rem; color:var(--ink); font-weight:550; line-height:1.3}
+  @media (max-width:720px){ .metabar{grid-template-columns:repeat(2,1fr)} }
+
+  /* ---------- generic section ---------- */
+  section{margin-top:56px}
+  .sec-h{display:flex; align-items:baseline; gap:.8em; margin:0 0 20px}
+  .sec-h .num{font-family:ui-monospace,Menlo,monospace; font-size:.78rem; color:var(--accent); font-weight:600}
+  .sec-h h2{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-weight:600; letter-spacing:.02em;
+    text-transform:uppercase; font-size:1.02rem; margin:0}
+  .sec-h .rule{flex:1; height:1px; background:var(--line); align-self:center}
+
+  /* ---------- verdict ---------- */
+  .verdict{background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:12px; padding:26px 28px; box-shadow:var(--shadow); margin-top:40px}
+  .verdict .stamp{font-family:ui-monospace,Menlo,monospace; font-size:.68rem; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--accent); margin-bottom:10px}
+  .verdict h3{font-size:clamp(1.35rem,3vw,1.85rem); line-height:1.2; margin:0 0 14px; text-wrap:balance;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace; font-weight:600; letter-spacing:-.01em}
+  .verdict p{margin:0 0 12px; color:var(--ink-dim); max-width:68ch}
+  .verdict p:last-child{margin-bottom:0}
+  .verdict b{color:var(--ink); font-weight:600}
+  .solved-row{display:flex; gap:10px; flex-wrap:wrap; margin-top:18px}
+  .solved-row .pill{font-family:ui-monospace,Menlo,monospace; font-size:.74rem; color:var(--ink-dim);
+    background:var(--ok-bg); border:1px solid color-mix(in srgb,var(--ok) 34%,transparent);
+    padding:6px 11px; border-radius:20px; display:flex; align-items:center; gap:.55em}
+  .solved-row .pill::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--ok)}
+
+  /* ---------- track cards ---------- */
+  .tracks{display:grid; grid-template-columns:repeat(2,1fr); gap:16px}
+  @media (max-width:760px){ .tracks{grid-template-columns:1fr} }
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px 20px 18px;
+    display:flex; flex-direction:column; gap:13px; box-shadow:var(--shadow)}
+  .card__top{display:flex; align-items:center; justify-content:space-between; gap:10px}
+  .code{font-family:ui-monospace,Menlo,monospace; font-size:.7rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-faint); border:1px solid var(--line-strong); border-radius:5px; padding:3px 8px}
+  .chip{font-family:ui-monospace,Menlo,monospace; font-size:.66rem; letter-spacing:.08em; text-transform:uppercase;
+    font-weight:600; padding:4px 9px; border-radius:20px; white-space:nowrap}
+  .chip.ok{color:var(--ok); background:var(--ok-bg); border:1px solid color-mix(in srgb,var(--ok) 34%,transparent)}
+  .chip.warn{color:var(--warn); background:var(--warn-bg); border:1px solid color-mix(in srgb,var(--warn) 38%,transparent)}
+  .chip.bad{color:var(--bad); background:var(--bad-bg); border:1px solid color-mix(in srgb,var(--bad) 38%,transparent)}
+  .card h3{margin:0; font-size:1.12rem; line-height:1.25; font-weight:600; letter-spacing:-.01em}
+  .card .bl{margin:0; color:var(--ink-dim); font-size:.93rem}
+  .card .split{display:grid; grid-template-columns:1fr 1fr; gap:12px; border-top:1px solid var(--line); padding-top:13px}
+  @media (max-width:420px){ .card .split{grid-template-columns:1fr} }
+  .card .split .lab{font-family:ui-monospace,Menlo,monospace; font-size:.6rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-faint); margin-bottom:5px}
+  .card .split p{margin:0; font-size:.86rem; color:var(--ink-dim); line-height:1.45}
+  .card .breaks{font-size:.83rem; color:var(--ink-dim); display:flex; gap:.6em; align-items:flex-start;
+    border-top:1px dashed var(--line); padding-top:11px}
+  .card .breaks .m{color:var(--bad); font-family:ui-monospace,Menlo,monospace; font-size:.72rem; font-weight:700; flex:none; margin-top:.05em}
+  .card .breaks b{color:var(--ink); font-weight:600}
+  .duo{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  @media (max-width:480px){ .duo{grid-template-columns:1fr} }
+  .lab2{font-family:ui-monospace,Menlo,monospace; font-size:.6rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:5px}
+  .duo p{margin:0; font-size:.86rem; color:var(--ink-dim); line-height:1.45}
+  .duo em{font-style:italic; color:var(--ink)}
+
+  /* ---------- ladder ---------- */
+  .ladder{position:relative; display:flex; flex-direction:column; gap:10px}
+  .rung{display:grid; grid-template-columns:64px 1fr auto; gap:16px; align-items:center;
+    background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:15px 18px; box-shadow:var(--shadow)}
+  @media (max-width:640px){ .rung{grid-template-columns:52px 1fr; } .rung .prop{grid-column:2; justify-self:start} }
+  .rung .lyr{font-family:ui-monospace,Menlo,monospace; font-weight:700; font-size:1rem; color:var(--accent);
+    border:1.5px solid color-mix(in srgb,var(--accent) 45%,transparent); border-radius:8px;
+    width:46px; height:46px; display:flex; align-items:center; justify-content:center}
+  .rung .body h4{margin:0 0 3px; font-size:1rem; font-weight:600}
+  .rung .body p{margin:0; font-size:.86rem; color:var(--ink-dim); max-width:62ch}
+  .rung .prop{font-family:ui-monospace,Menlo,monospace; font-size:.62rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-faint); border:1px solid var(--line-strong); border-radius:5px; padding:4px 8px; white-space:nowrap}
+  .rung.cone{border-style:dashed; border-color:var(--line-strong); background:transparent; box-shadow:none}
+  .rung.cone .lyr{color:var(--warn); border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+  .arrow{display:flex; justify-content:center; color:var(--ink-faint); font-family:ui-monospace,Menlo,monospace; font-size:.8rem; margin:-4px 0}
+
+  /* ---------- ship / drop ---------- */
+  .mvp{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media (max-width:760px){ .mvp{grid-template-columns:1fr} }
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px 22px; box-shadow:var(--shadow)}
+  .panel.ship{border-top:3px solid var(--ok)}
+  .panel.drop{border-top:3px solid var(--bad)}
+  .panel .ph{font-family:ui-monospace,Menlo,monospace; font-size:.72rem; letter-spacing:.16em; text-transform:uppercase;
+    display:flex; align-items:center; gap:.6em; margin-bottom:14px}
+  .panel.ship .ph{color:var(--ok)} .panel.drop .ph{color:var(--bad)}
+  .panel ol,.panel ul{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:11px}
+  .panel li{display:grid; grid-template-columns:auto 1fr; gap:11px; font-size:.9rem; color:var(--ink); align-items:baseline}
+  .panel li .mk{font-family:ui-monospace,Menlo,monospace; font-size:.74rem; font-weight:700}
+  .panel.ship li .mk{color:var(--ok)} .panel.drop li .mk{color:var(--bad)}
+  .panel li span.r{color:var(--ink-dim)}
+  .panel li b{font-weight:600}
+
+  /* ---------- risks ---------- */
+  .risks{display:flex; flex-direction:column; gap:11px}
+  .risk{display:grid; grid-template-columns:auto 1fr; gap:15px; align-items:start;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:15px 18px}
+  .risk .sev{font-family:ui-monospace,Menlo,monospace; font-size:.6rem; letter-spacing:.1em; text-transform:uppercase;
+    font-weight:700; padding:4px 8px; border-radius:5px; white-space:nowrap; margin-top:1px}
+  .risk .sev.p{color:var(--accent-ink); background:var(--accent)}
+  .risk .sev.h{color:var(--bad); background:var(--bad-bg); border:1px solid color-mix(in srgb,var(--bad) 38%,transparent)}
+  .risk .sev.m{color:var(--warn); background:var(--warn-bg); border:1px solid color-mix(in srgb,var(--warn) 38%,transparent)}
+  .risk p{margin:0; font-size:.9rem; color:var(--ink-dim)}
+  .risk p b{color:var(--ink); font-weight:600}
+  .risk .kc{display:block; margin-top:5px; font-size:.82rem; color:var(--ink-faint)}
+  .risk .kc em{font-family:ui-monospace,Menlo,monospace; font-style:normal; color:var(--warn); letter-spacing:.04em}
+
+  /* ---------- method ---------- */
+  .method{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:24px; box-shadow:var(--shadow)}
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line);
+    border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  @media (max-width:560px){ .stats{grid-template-columns:repeat(2,1fr)} }
+  .stat{background:var(--surface-2); padding:16px; text-align:left}
+  .stat .n{font-family:ui-monospace,Menlo,monospace; font-size:1.7rem; font-weight:600; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums; line-height:1}
+  .stat .l{font-size:.72rem; color:var(--ink-faint); margin-top:6px; letter-spacing:.02em}
+  .vbar{display:flex; height:12px; border-radius:6px; overflow:hidden; margin:22px 0 12px; border:1px solid var(--line)}
+  .vbar i{display:block}
+  .vbar .c{background:var(--ok)} .vbar .t{background:var(--warn)} .vbar .r{background:var(--bad)}
+  .vlegend{display:flex; gap:18px; flex-wrap:wrap; font-family:ui-monospace,Menlo,monospace; font-size:.74rem; color:var(--ink-dim)}
+  .vlegend span{display:flex; align-items:center; gap:.5em}
+  .vlegend i{width:9px; height:9px; border-radius:2px; display:inline-block}
+  .method p.note{margin:18px 0 0; font-size:.88rem; color:var(--ink-dim); max-width:74ch}
+  .method .path{font-family:ui-monospace,Menlo,monospace; font-size:.82rem; color:var(--accent);
+    background:var(--ground); border:1px solid var(--line); padding:2px 7px; border-radius:5px; word-break:break-all}
+
+  footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line);
+    font-family:ui-monospace,Menlo,monospace; font-size:.72rem; letter-spacing:.05em; color:var(--ink-faint);
+    display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap}
+
+  a{color:var(--accent); text-decoration:none} a:hover{text-decoration:underline}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+
+  .reveal{opacity:0; transform:translateY(10px); animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){ .reveal{animation:none; opacity:1; transform:none} }
+</style>
+
+<header class="masthead">
+  <canvas id="contour" aria-hidden="true"></canvas>
+  <div class="masthead__inner reveal">
+    <div class="eyebrow"><span class="tick"></span> Field Research Brief · 2026-07-07 · Pre-design phase</div>
+    <h1 class="title">Navigation for when the grid is gone</h1>
+    <p class="lede">A technology reality-check for an <b>offline, GPS-degraded</b> map + phone-to-phone hazard-sharing app built for disaster and civil-unrest zones. Four capability tracks, researched and adversarially verified against the evidence.</p>
+    <div class="metabar">
+      <div class="cell"><span class="k">Threat drivers</span><span class="v">Natural disaster + civil unrest</span></div>
+      <div class="cell"><span class="k">Platform</span><span class="v">Phone-first + optional LoRa/solar</span></div>
+      <div class="cell"><span class="k">Tracks</span><span class="v">Positioning · Vision · Mesh · Power</span></div>
+      <div class="cell"><span class="k">Evidence</span><span class="v">49 agents · 134 sources · 24 claims verified</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+  <div class="verdict reveal">
+    <div class="stamp">Bottom line</div>
+    <h3>Buildable — but only if you invert the pitch.</h3>
+    <p>The defensible product is an <b>offline map with a self-contained dead-reckoning position and a phone-to-phone hazard layer</b>. The seductive premise, point your camera and recognize the ruined street from pre-disaster photos, is not supported by the evidence and should be cut from v1.</p>
+    <p>The single biggest risk is <b>adversarial and orthogonal to sensor quality</b>: in the unrest/war model GNSS is routinely jammed and spoofed, and no serverless mesh is Sybil-proof (every audited app, notably Bridgefy, was fully broken). Better sensors fix neither. Only structure does, make dead reckoning the trusted backbone, never trust a lone GNSS fix, and gate every hazard report behind signing, corroboration, and expiry.</p>
+    <div class="solved-row">
+      <span class="pill">Offline vector maps + routing at region scale</span>
+      <span class="pill">Multi-day power on a bank + folding panel</span>
+      <span class="pill">Short-range BLE / longer-range LoRa messaging</span>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-h"><span class="num">01</span><h2>Track assessment</h2><span class="rule"></span></div>
+    <div class="tracks">
+
+      <article class="card">
+        <div class="card__top"><span class="code">Track A</span><span class="chip warn">Usable · needs resets</span></div>
+        <h3>GPS-denied positioning</h3>
+        <p class="bl">A drift-limited problem. Step counting is solved (~99.5%); heading is the binding constraint, and no validated multi-kilometer phone-only benchmark exists anywhere.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>IMU dead reckoning snapped to a cached OSM graph (map-matching cuts drift 40–97%), with opportunistic GNSS resets.</p></div>
+          <div><div class="lab">Frontier</div><p>Foot-mounted ZUPT pod (best accessory bet, buildable now); UWB phone-to-phone, ~2–4 yrs.</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span><b>Compass 30–90° off</b> in rubble and steel — exactly this app's terrain — plus jamming/spoofing.</span></p>
+      </article>
+
+      <article class="card">
+        <div class="card__top"><span class="code">Track B</span><span class="chip bad">De-scoped</span></div>
+        <h3>Camera localization</h3>
+        <p class="bl">The pillar the evidence does not support. All commercial VPS (ARCore Geospatial, Lightship) is cloud-only, useless in the exact outage this targets.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>Only coarse manual tools: skyline-to-terrain matching, human-in-the-loop landmark confirmation.</p></div>
+          <div><div class="lab">Frontier</div><p>Recognizing collapsed streets: no visible inflection in 2020–2025. Treat as 5–10 yrs, low confidence.</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span>Night (85%→44%), smoke (a cliff), and <b>moved buildings (~0%, no published accuracy)</b>. DARPA SubT was won on LiDAR, not cameras.</span></p>
+      </article>
+
+      <article class="card">
+        <div class="card__top"><span class="code">Track C</span><span class="chip warn">Works · trust unsolved</span></div>
+        <h3>Mesh + hazard trust</h3>
+        <p class="bl">BLE is the only cross-platform baseline (10–100 m/hop), hobbled by iOS/Android background limits. A LoRa companion buys an order of magnitude of range.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>BLE hazard beacons + a spatial CRDT, gated by signed, N≥3-corroborated, TTL-expiring reports.</p></div>
+          <div><div class="lab">Frontier</div><p>Purpose-built geohash delta-CRDT and crowdsourced jamming detection, ~1–2 yrs.</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span>Sparse density starves the mesh; <b>data poisoning has no serverless arbiter</b> — raise Sybil cost, never eliminate it.</span></p>
+      </article>
+
+      <article class="card">
+        <div class="card__top"><span class="code">Track D</span><span class="chip ok">Solved · GNSS-constrained</span></div>
+        <h3>Power, hardware & EMP</h3>
+        <p class="bl">The decisive finding reorders priorities: the <b>screen and camera/CV dominate draw</b>, not GNSS or BLE. Autonomy is a solved problem if you duty-cycle.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>3–5 days on a 20,000 mAh bank; effectively indefinite with a 10–20 W folding panel. Dark vector map by default.</p></div>
+          <div><div class="lab">Frontier</div><p>EMP: a powered-off, uncabled phone is least-vulnerable, but survival is inferred, never measured.</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span>Offline spoof-detection <b>can't catch matched-power GNSS spoofing</b> (its key check needs connectivity). EMP stays Faraday-bag insurance.</span></p>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><span class="num">02</span><h2>The positioning stack</h2><span class="rule"></span></div>
+    <p style="margin:0 0 20px;color:var(--ink-dim);max-width:70ch">Position is a distribution, not a dot. Feed it cheap continuous motion; spend scarce, untrusted absolute fixes only to shrink the uncertainty cone. When a layer fails, drop to the next, and the cone visibly widens.</p>
+    <div class="ladder">
+      <div class="rung">
+        <div class="lyr">L0</div>
+        <div class="body"><h4>Trusted GNSS reset</h4><p>Raw GNSS, anomaly-gated (drop mock-provider / C-N0 anomalies), duty-cycled to one fix per 30–60 s. In the unrest profile, downgraded to advisory-only. Collapses the cone when it passes.</p></div>
+        <span class="prop">Absolute · scarce</span>
+      </div>
+      <div class="arrow">↓ on loss / spoof</div>
+      <div class="rung">
+        <div class="lyr">L1</div>
+        <div class="body"><h4>IMU pedestrian dead reckoning</h4><p>Step detection + EKF heading fusion (ships today as Android ROTATION_VECTOR / iOS CoreMotion). Always-on, low power, survives jamming, smoke, and darkness. Grows the cone.</p></div>
+        <span class="prop">Continuous backbone</span>
+      </div>
+      <div class="arrow">↓ bound the drift</div>
+      <div class="rung">
+        <div class="lyr">L2</div>
+        <div class="body"><h4>Map-matching to cached OSM</h4><p>On-device HMM/Viterbi snaps the drifting trace onto plausible graph edges (~5 m corrected). Mandatory — it bounds the lateral drift the compass cannot. Needs an off-graph state for open-field evacuation.</p></div>
+        <span class="prop">Drift eliminator</span>
+      </div>
+      <div class="arrow">↓ when a fix is possible</div>
+      <div class="rung">
+        <div class="lyr">L3</div>
+        <div class="body"><h4>Coarse re-anchor: vision + peers</h4><p>Not street recognition. Skyline-to-terrain where a horizon is exposed, human-confirmed landmarks, and peer-shared trusted fixes. Duty-cycled — camera + CV is a multi-watt drain that fails abruptly in smoke and dark.</p></div>
+        <span class="prop">Degraded · optional</span>
+      </div>
+      <div class="arrow">↓ nothing left</div>
+      <div class="rung cone">
+        <div class="lyr">◔</div>
+        <div class="body"><h4>Pure PDR + a widening uncertainty cone</h4><p>The honest UI primitive. The user is never shown a false-confidence dot — the cone is what makes a spoofed or blind environment safe to operate in.</p></div>
+        <span class="prop">Honest fallback</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><span class="num">03</span><h2>MVP call</h2><span class="rule"></span></div>
+    <div class="mvp">
+      <div class="panel ship">
+        <div class="ph">◆ Ship in v1</div>
+        <ol>
+          <li><span class="mk">01</span><span class="r"><b>Offline vector maps + routing</b> from pre-cut regional packages (low-single-digit GB).</span></li>
+          <li><span class="mk">02</span><span class="r"><b>Positioning L0–L2</b>: gated GNSS, IMU PDR, map-matching, with an honest uncertainty cone.</span></li>
+          <li><span class="mk">03</span><span class="r"><b>BLE hazard layer</b>: extended-advertising beacons + spatial-CRDT edits under 237 bytes.</span></li>
+          <li><span class="mk">04</span><span class="r"><b>The trust gate</b>: signed + N≥3 corroboration + TTL expiry. Market it as corroboration, not attack-proof.</span></li>
+          <li><span class="mk">05</span><span class="r"><b>Duty-cycling power manager</b> with a dark vector-map default.</span></li>
+          <li><span class="mk">06</span><span class="r"><b>First-class companion hardware</b>: pair a LoRa node + solar over BLE ($20–50). The real resilience story.</span></li>
+        </ol>
+      </div>
+      <div class="panel drop">
+        <div class="ph">✕ Drop from v1</div>
+        <ul>
+          <li><span class="mk">✕</span><span class="r"><b>CV auto-recognition of streets.</b> Collapses at night, in smoke, and when buildings have moved.</span></li>
+          <li><span class="mk">✕</span><span class="r"><b>All cloud VPS.</b> Architecturally useless in the exact outage we target.</span></li>
+          <li><span class="mk">✕</span><span class="r"><b>UWB & Wi-Fi RTT.</b> No cross-platform interop; need powered anchors a dead grid lacks.</span></li>
+          <li><span class="mk">✕</span><span class="r"><b>Sub-meter RTK/PPP.</b> Depends on correction streams that need connectivity.</span></li>
+          <li><span class="mk">✕</span><span class="r"><b>Magnetic/radio fingerprinting.</b> Needs a pre-disruption survey damage may invalidate.</span></li>
+          <li><span class="mk">✕</span><span class="r"><b>Any "Sybil-proof / spoof-proof" claim.</b> Keep the mitigations, drop the promise.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><span class="num">04</span><h2>Capture layer · CV, earned back</h2><span class="rule"></span></div>
+    <p style="margin:0 0 20px;color:var(--ink-dim);max-width:72ch">Cutting auto-localization didn't kill the camera — it repositioned it. The camera is a <b style="color:var(--ink)">mapping tool</b> (record the changed world for the people behind you), never a positioning oracle. Both features reuse the existing signed-and-corroborated trust gate, and every capture-derived re-anchor enters as a low-priority candidate the uncertainty cone can overrule — that boundary is exactly where the rejected self-localization tries to sneak back in.</p>
+    <div class="tracks">
+      <article class="card">
+        <div class="card__top"><span class="code">Feature 3</span><span class="chip ok">Ship v1 · classical core</span></div>
+        <h3>Fixed-vantage change detection</h3>
+        <p class="bl">Re-occupy a named vantage, ghost-overlay align, human blink/slider review, emit a tiny signed pointer. Self-referential at one named place, so it sidesteps the aliasing trap.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>ORB/AKAZE + RANSAC homography align (~0.15–0.3 s), human-confirmed. Cheap, classical, no ML.</p></div>
+          <div><div class="lab">Frontier</div><p>On-device change proposers (TinyCD-class), ~2–4 yr — still human-confirmed, never autonomous.</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span>A sparse sampler that <b>cries wolf</b> — illumination/shadow false alarms, and it misses change between duty-cycled revisits. Keep it narrow, optional, human-confirmed.</span></p>
+      </article>
+      <article class="card">
+        <div class="card__top"><span class="code">Feature 1</span><span class="chip warn">v1 = dumb layer · rebuild deferred</span></div>
+        <h3>Re-survey / mapping</h3>
+        <p class="bl">"Match the new world against itself" into relocalizable geometry is a 2–5 yr frontier. v1 ships the honest version: floating geotagged fresh imagery, dedup, bulk sync, human overlay.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>Capture tagged with current pose + uncertainty; 8-byte pHash + thumbnail on the mesh; raw imagery by bulk on contact.</p></div>
+          <div><div class="lab">Frontier</div><p>On-device SfM / Gaussian-splat rebuild (1–3 yr, iOS-only today); federated crowd-mapping (2–5 yr).</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span>One <b>false submap merge</b> (same aliasing) silently misplaces a chunk of survey data later users trust. Gate every weld: RANSAC + corroboration + human-confirm.</span></p>
+      </article>
+    </div>
+    <div class="mvp" style="margin-top:16px">
+      <div class="panel">
+        <div class="ph" style="color:var(--ink-dim)">▤ What moves where</div>
+        <div class="duo">
+          <div><div class="lab2">Rides the mesh · bytes</div><p>pHash signature (8 B), descriptor <em>hash</em>, vantage/segment ID, timestamp, change-class, confidence, author signature + TTL, thumbnail hash.</p></div>
+          <div><div class="lab2">Bulk only · MB–GB</div><p>Panoramas (5–25 MB), 4K video (130–360 MB/min), meshes/submaps, CD model weights. Move on physical contact or at a hub.</p></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph" style="color:var(--ink-dim)">⇄ How imagery actually moves</div>
+        <ul>
+          <li><span class="mk" style="color:var(--ok)">▸</span><span class="r"><b>SoftAP + mDNS + HTTPS</b> (LocalSend-style) — cross-platform, link-limited. The load-bearing default.</span></li>
+          <li><span class="mk" style="color:var(--ok)">▸</span><span class="r"><b>USB-C cable</b> — 0.48–40 Gbps, RF-immune. The floor that always works.</span></li>
+          <li><span class="mk" style="color:var(--warn)">▸</span><span class="r"><b>AirDrop / Quick Share</b> — fast (100s of Mbps) but <b>same-OS only</b>. Opportunistic, never depended on.</span></li>
+          <li><span class="mk" style="color:var(--bad)">▸</span><span class="r"><b>iOS↔Android bulk is still a wall</b> — Wi-Fi Aware is broken today; the Quick Share bridge is Pixel-first, not an SDK.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><span class="num">05</span><h2>Reach · wilderness &amp; drones</h2><span class="rule"></span></div>
+    <p style="margin:0 0 20px;color:var(--ink-dim);max-width:72ch">Two probes at the edges of scope. Both earn a place; <b style="color:var(--ink)">neither earns the core.</b> Urban/populated disaster stays the design center — each of these is inert-safe and gated behind a trigger (wilderness behind "no peers," drone behind ownership), so the app works fully with neither present.</p>
+    <div class="tracks">
+      <article class="card">
+        <div class="card__top"><span class="code">Coast / island</span><span class="chip warn">GO as solo mode · not a disaster app</span></div>
+        <h3>Wilderness degradation</h3>
+        <p class="bl">In the wild you lose the road-graph drift-eliminator but gain the best GPS a phone ever sees (~4.9 m open-sky vs 7–13 m urban). The stack reuses cheaply — but the mesh + crowd-hazard core is structurally <b>dead with no population</b>.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>Raw-GPS-primary on the same anchor/cone UI + breadcrumb return + compass + offline DEM/topo + manual celestial backstop. Near-zero R&amp;D, mostly reuse.</p></div>
+          <div><div class="lab">Frontier</div><p>Barometric-DEM terrain matching (~2–3 yr) and skyline-to-DEM re-anchor (~2–4 yr) — both terrain-gated, roadmap only.</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span>Flat beaches/atolls (&lt;3–5 m relief) <b>kill terrain matching</b> (165 m on the only free DEM); canopy degrades GPS and DEM together. Gate on land-cover, sell as a solo survival instrument, never a shrunk disaster app.</span></p>
+      </article>
+      <article class="card">
+        <div class="card__top"><span class="code">Drone tier</span><span class="chip warn">Optional gear · gated on ownership</span></div>
+        <h3>Aerial re-survey · scouting · relay</h3>
+        <p class="bl">A real force-multiplier for the <b>~8%</b> who own a DJI-class drone; never a core dependency. Aerial nadir re-survey is the standout — top-down imagery beats ground capture on aliasing and self-georeferences.</p>
+        <div class="split">
+          <div><div class="lab">Shippable now</div><p>Re-survey (hub-stitched orthomosaic feeds the map), route scouting (drops hazard pins into the mesh), burst LoRa relay (~4–5× line-of-sight range).</p></div>
+          <div><div class="lab">Frontier</div><p>Phone-native orthomosaic + GPS-denied auto-georef (1–3 yr); multi-hop relay / BVLOS (3–7 yr, regulation-blocked).</p></div>
+        </div>
+        <p class="breaks"><span class="m">FAILS</span><span>GPS denial — the scenario — attacks the drone's own <b>return-to-home and hover</b>. Video range collapses 10–20× to ~0.5–1 km in the urban canyon; endurance 20–46 min. Optional gear, never load-bearing.</span></p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><span class="num">06</span><h2>Open risks &amp; kill criteria</h2><span class="rule"></span></div>
+    <div class="risks">
+      <div class="risk">
+        <span class="sev p">Primary</span>
+        <p><b>GNSS trust is unsolvable offline.</b> Matched-power spoofing returns a false fix that looks valid, and the strongest software check needs connectivity we won't have.
+        <span class="kc"><em>Constraint:</em> GNSS is advisory-only in the unrest profile from day one; PDR + map-matching is the trusted backbone.</span></p>
+      </div>
+      <div class="risk">
+        <span class="sev h">High</span>
+        <p><b>No validated multi-km phone-only positioning benchmark exists.</b> 1° of heading error is ~17.5 m of drift per km, and the compass degrades worst in rubble.
+        <span class="kc"><em>Kill/pivot:</em> if map-matched PDR exceeds ~one street width over realistic 1–3 km disaster walks, require the foot-mounted ZUPT accessory. Phase-1 field trial must generate this missing benchmark.</span></p>
+      </div>
+      <div class="risk">
+        <span class="sev h">High</span>
+        <p><b>Serverless trust can become an attack amplifier.</b> 1,000 Waze Sybils once ran from a single machine; poisoned "safe" roads reroute people into danger.
+        <span class="kc"><em>Kill:</em> if corroboration + decay can't keep a fabricated hazard's lifetime low under modeled Sybil attack, degrade to read-only from socially-trusted peers.</span></p>
+      </div>
+      <div class="risk">
+        <span class="sev m">Watch</span>
+        <p><b>BLE background relay is throttled hard by both mobile OSes,</b> and mesh needs crowd density that a sparse early-disaster zone lacks.
+        <span class="kc"><em>Pivot:</em> LoRa-companion-primary — which is why companion hardware is first-class in the MVP, not an add-on.</span></p>
+      </div>
+      <div class="risk">
+        <span class="sev m">Watch</span>
+        <p><b>Camera CV in combined smoke + rubble + dark shows no near-term path.</b> Already de-scoped.
+        <span class="kc"><em>Re-promote only if:</em> a distilled robust model clears ~50% recall under those combined conditions and someone publishes relocalization against a post-collapse reference. Plan as if neither happens.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><span class="num">07</span><h2>How we know</h2><span class="rule"></span></div>
+    <div class="method">
+      <div class="stats">
+        <div class="stat"><div class="n">20</div><div class="l">Sub-questions researched</div></div>
+        <div class="stat"><div class="n">49</div><div class="l">Agents, 0 errors</div></div>
+        <div class="stat"><div class="n">24</div><div class="l">Load-bearing claims verified</div></div>
+        <div class="stat"><div class="n">134</div><div class="l">Cited sources</div></div>
+      </div>
+      <div class="vbar" role="img" aria-label="14 confirmed, 10 contested, 0 refuted">
+        <i class="c" style="flex:14"></i><i class="t" style="flex:10"></i><i class="r" style="flex:.4"></i>
+      </div>
+      <div class="vlegend">
+        <span><i style="background:var(--ok)"></i>14 confirmed</span>
+        <span><i style="background:var(--warn)"></i>10 contested (real but conditional)</span>
+        <span><i style="background:var(--bad)"></i>0 refuted</span>
+      </div>
+      <p class="note">Each quantitative claim was handed to an independent adversary instructed to refute it with separate sources. "Contested" means the headline number is real but conditional (test setup, phone posture, environment); those caveats are carried into the text. The verifiers caught several figures that trace back to uncited SEO blogs echoing the original query, not measurements. The capture layer (§04) and reach probes (§05) come from two follow-up runs: 30 + 26 agents, 32 more claims verified, which refuted the "AirDrop is 30–50 Mbps" figure upward, the "Object Capture is macOS-only" claim outright, and a fabricated drone "40–60% survey-time" stat. Across all three runs: <b style="color:var(--ink)">105 agents · 56 claims verified · ~4.2M tokens</b>. Full sourced reports live in <span class="path">docs/research/</span>: the main brief, <span class="path">…-capture-features-exploration.md</span>, and <span class="path">…-wilderness-drone-exploration.md</span></p>
+    </div>
+  </section>
+
+  <footer>
+    <span>APOCALYPTO · TECHNOLOGY RESEARCH BRIEF</span>
+    <span>Next: design &amp; spec cycle → MVP</span>
+  </footer>
+</div>
+
+<script>
+  (function(){
+    var c = document.getElementById('contour');
+    if(!c) return;
+    var ctx = c.getContext('2d');
+    function draw(){
+      var host = c.parentElement;
+      var w = host.clientWidth, h = host.clientHeight;
+      var dpr = Math.min(window.devicePixelRatio||1, 2);
+      c.width = w*dpr; c.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.clearRect(0,0,w,h);
+      var css = getComputedStyle(document.documentElement);
+      var stroke = css.getPropertyValue('--contour').trim() || 'rgba(120,190,200,0.05)';
+      ctx.strokeStyle = stroke; ctx.lineWidth = 1;
+      // concentric elevation-line contours, organic via layered sine perturbation
+      var cx = w*0.82, cy = h*0.5;
+      var rings = 26;
+      for(var i=1;i<=rings;i++){
+        var base = i*Math.max(w,h)*0.028;
+        ctx.beginPath();
+        for(var a=0;a<=Math.PI*2+0.06;a+=0.06){
+          var pert = Math.sin(a*3 + i*0.55)*base*0.12
+                   + Math.sin(a*5 - i*0.9)*base*0.06
+                   + Math.sin(a*2 + i*0.2)*base*0.09;
+          var r = base + pert;
+          var x = cx + Math.cos(a)*r;
+          var y = cy + Math.sin(a)*r*0.82;
+          if(a===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+      }
+    }
+    draw();
+    var t;
+    window.addEventListener('resize', function(){ clearTimeout(t); t=setTimeout(draw,120); });
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    (mq.addEventListener?mq.addEventListener.bind(mq,'change'):mq.addListener.bind(mq))(draw);
+    new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  })();
+</script>
