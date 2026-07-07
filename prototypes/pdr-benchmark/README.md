@@ -47,5 +47,10 @@ Writes `out/<track>_metrics.json` and `out/<track>_overlay.png`.
   only 18 -> 16.5 m because along-track (step-length) error dominates. On open/parking
   (TEST_06) it was near-neutral. It is not a drift-correction oracle and only
   disambiguates while drift stays below street spacing.
+- **Periodic GNSS re-anchoring bounds the drift** (`scripts/reanchor_experiment.py`,
+  `out/reanchor_curve.png`). A trusted fix every ~30 s (~35 m) holds residual RMSE
+  <=5-6 m on every track; every ~15 s reaches the ~3-4 m GNSS noise floor. Continuous
+  GPS is not required, only occasional trusted fixes, with PDR bridging the gaps.
 
+Run the sweep with `PYTHONPATH=. .venv/bin/python scripts/reanchor_experiment.py`.
 See `../../STATUS.md` for the full verdict and next-step decision.

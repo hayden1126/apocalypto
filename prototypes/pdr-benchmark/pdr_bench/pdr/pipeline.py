@@ -29,6 +29,9 @@ class PdrResult:
     k: float
     heading_offset: float
     n_steps: int
+    step_t: np.ndarray = None       # (Ns,) per-step times, s
+    step_len: np.ndarray = None     # (Ns,) per-step lengths, m
+    raw_heading: np.ndarray = None  # (Ns,) per-step compass heading, pre-alignment
 
 
 def _walked_path_length(session: ImuSession,
@@ -71,7 +74,8 @@ def run_pdr(session: ImuSession,
     label = f"PDR ({'gyro+mag' if use_mag else 'gyro-only'})"
     return PdrResult(label=label, t=t_pos, ne=aligned, gt_ne=gt_pos,
                      metrics=trajectory_metrics(aligned, gt_pos, pl),
-                     k=k, heading_offset=offset, n_steps=len(steps.idx))
+                     k=k, heading_offset=offset, n_steps=len(steps.idx),
+                     step_t=steps.t, step_len=lengths, raw_heading=step_yaw)
 
 
 def heading_only_reference(session: ImuSession,

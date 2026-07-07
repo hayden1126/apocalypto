@@ -58,6 +58,18 @@ class GeoRef:
         """Map (N,2) local [North, East] metres to (N,2) UTM [easting, northing]."""
         return ne[:, ::-1] @ self.r.T + self.t       # (East, North) -> UTM
 
+    def utm_to_ne(self, utm: np.ndarray) -> np.ndarray:
+        """Inverse of ne_to_utm: UTM [easting, northing] -> local [North, East]."""
+        return ((utm - self.t) @ self.r)[:, ::-1]
+
+    def lonlat_to_ne(self, lat: np.ndarray,
+        lon: np.ndarray,
+    ) -> np.ndarray:
+        """Map lat/lon degrees to (N,2) local [North, East] metres."""
+        tf = Transformer.from_crs(CRS.from_epsg(4326), self.utm, always_xy=True)
+        e, n = tf.transform(lon, lat)
+        return self.utm_to_ne(np.column_stack([e, n]))
+
     def ne_to_lonlat(self, ne: np.ndarray) -> np.ndarray:
         """Map (N,2) local [North, East] metres to (N,2) [lon, lat] degrees."""
         utm_en = self.ne_to_utm(ne)
