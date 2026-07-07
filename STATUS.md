@@ -3,9 +3,10 @@
 > Living state. Update at the end of every working block so a fresh session can resume from here after `/clear`.
 
 Last updated: 2026-07-07
-Branch / worktree: none — project is NOT under version control yet (no git repo). All state is plain files on disk.
+Branch / worktree: `main` — public repo at https://github.com/hayden1126/apocalypto
 
 ## Done
+- **Git initialized and published.** Public GitHub repo `hayden1126/apocalypto`; initial commit `c2aeedd` (5 files, research phase). Commits use `haydenleung1126@gmail.com` (already public across Hayden's other repos, so no noreply switch).
 - **Research/concept phase complete.** Three adversarial multi-agent research runs (105 agents, 56 load-bearing claims verified, ~4.2M tokens, all 2026-07-07). Full sourced reports in `docs/research/`:
   - `2026-07-07-offline-apocalypse-nav-research.md` — core 4 tracks (GPS-denied positioning, CV localization, mesh+trust, hardware/power/EMP).
   - `2026-07-07-capture-features-exploration.md` — Feature 1 (re-survey/mapping) + Feature 3 (fixed-vantage change detection).
@@ -19,7 +20,6 @@ Branch / worktree: none — project is NOT under version control yet (no git rep
 
 ## Blocked / decisions needed
 - **THE load-bearing unknown:** no validated multi-km, phone-only PDR benchmark exists anywhere. It gates the entire positioning backbone, which gates every capture feature (they all consume position). Must be measured before the architecture is committed. If it fails, the product needs a foot-mounted ZUPT sensor accessory — cheaper to learn from a weekend prototype than a built app.
-- Project is not in git. Consider `git init` before writing code (needs Hayden's OK).
 
 ## Notes for next session
 - **Design center is locked: urban/populated disaster + civil unrest.** Phone-first + optional companion hardware (LoRa/solar). Wilderness and drone are gated optional tiers, never core.
