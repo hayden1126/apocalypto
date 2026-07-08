@@ -101,7 +101,7 @@ From the research, do not spend time on these (full reasoning in the research do
 
 ## 8. Verification
 
-- Unit + regression: `cd prototypes/pdr-benchmark && .venv/bin/python -m pytest -q` (28 existing + new `trusted_fix` + checkpoint + phone-regression tests green).
+- Unit + regression: `cd prototypes/pdr-benchmark && .venv/bin/python -m pytest -q` (48 tests: the 28 originals + Workstream A `trusted_fix`/checkpoint/phone-regression + B1 map-heading, all green).
 - End-to-end on the real shakedown, before/after A2, to see held-out RMSE change as the 808 m outlier is rejected and the accuracy gate is fixed:
   `.venv/bin/python -m pdr_bench.run_phone data/phone/ma_ling_walk --k 0.537` and
   `PYTHONPATH=. .venv/bin/python scripts/reanchor_phone.py data/phone/ma_ling_walk --k 0.537`.
