@@ -5,10 +5,11 @@ pedestrian dead reckoning (PDR), map-matched to an OSM walking graph, hold
 street-level accuracy over a real outdoor walk?
 
 This step runs a real PDR + map-matching pipeline against the open **GEOLOC/ULISS**
-pedestrian dataset (DOI 10.57745/ZCBIIB): 6 outdoor tracks (230-565 m), handheld
-low-cost MEMS IMU (Xsens MTi-7) held flat, with a foot-mounted ground-truth
-trajectory and per-stride ground truth. It is a *first signal*, not proof: the IMU
-is a worn sensor (not a phone), tracks are sub-km, and GT is few-metre.
+pedestrian dataset (DOI 10.57745/ZCBIIB): 6 tracks (4 clean-outdoor, benchmarked;
+231-565 m), handheld low-cost MEMS IMU (Xsens MTi-7) held flat (z-up), with a
+foot-mounted ground-truth trajectory and per-stride ground truth. It is a *first
+signal*, not proof: the IMU is a handheld low-cost sensor (not a phone), tracks are
+sub-km, and GT is few-metre.
 
 ## Pipeline
 
