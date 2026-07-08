@@ -17,7 +17,8 @@ import numpy as np
 
 from pdr_bench.eval.geo import path_length
 from pdr_bench.eval.metrics import trajectory_metrics
-from pdr_bench.io.phone import load_phone, phone_georef
+from pdr_bench.eval.phone_metrics import checkpoint_errors
+from pdr_bench.io.phone import load_checkpoints, load_phone, phone_georef
 from pdr_bench.mapmatch.graph import walk_graph
 from pdr_bench.mapmatch.match import match_track
 from pdr_bench.pdr.pipeline import run_pdr
@@ -29,6 +30,7 @@ def process_phone(export_dir: str,
     name: str = "phone",
     k: float | None = None,
     do_map: bool = True,
+    checkpoint_csv: str | None = None,
     obs_noise: float = 25.0,
     outdir: str = "out",
 ) -> dict:
@@ -40,6 +42,19 @@ def process_phone(export_dir: str,
            "k_source": "fixed" if k is not None else "gps_calibrated",
            "gps_median_acc_m": round(float(np.median(s.meta["gps_horizontal_acc_m"])), 1),
            "pdr_vs_gps": r.metrics}
+
+    if checkpoint_csv:
+        mt, mne, labels = load_checkpoints(s, checkpoint_csv)
+        in_range = (mt >= r.t[0]) & (mt <= r.t[-1])
+        if in_range.any():
+            ce = checkpoint_errors(r.t, r.ne, mt[in_range], mne[in_range])  # GPS-free M4
+            out["checkpoint_vs_survey"] = {
+                "labels": [lab for lab, ok in zip(labels, in_range) if ok],
+                "errors_m": [round(float(x), 1) for x in ce],
+                "p95_m": round(float(np.percentile(ce, 95)), 1),
+                "n_dropped_out_of_range": int((~in_range).sum())}
+        else:
+            out["checkpoint_vs_survey"] = "skipped: no markers within the PDR track span"
 
     graph, matched_utm = None, None
     if do_map:
@@ -79,8 +94,11 @@ def main() -> None:
     ap.add_argument("--k", type=float, default=None,
         help="fixed Weinberg k (from a measured calibration leg); default GPS-calibrated")
     ap.add_argument("--no-map", action="store_true")
+    ap.add_argument("--checkpoints", default=None,
+        help="surveyed-checkpoint csv (label,lat,lon or label,n,e); scores GPS-free M4 error")
     a = ap.parse_args()
-    out = process_phone(a.export_dir, a.name, a.k, do_map=not a.no_map)
+    out = process_phone(a.export_dir, a.name, a.k, do_map=not a.no_map,
+                        checkpoint_csv=a.checkpoints)
     print(json.dumps(out, indent=2))
 
 
