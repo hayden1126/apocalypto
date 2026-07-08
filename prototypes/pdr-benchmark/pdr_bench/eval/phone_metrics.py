@@ -11,13 +11,47 @@ phone GPS is both the scoring reference and the re-anchor source:
 """
 import numpy as np
 
-from pdr_bench.eval.geo import interp_ne
+from pdr_bench.eval.geo import decompose_error, interp_ne
 from pdr_bench.pdr.reanchor import reanchored_track
 
 
 def loop_closure_error(track: np.ndarray) -> float:
     """Distance (m) between the open-loop end and start; true loop displacement is 0."""
     return float(np.hypot(*(track[-1] - track[0])))
+
+
+def heldout_reanchor_stats(step_t: np.ndarray,
+    step_len: np.ndarray,
+    raw_heading: np.ndarray,
+    gnss_t: np.ndarray,
+    gnss_ne: np.ndarray,
+    interval: float,
+) -> dict:
+    """Held-out re-anchor residual stats at the mid-cadence times.
+
+    Anchors land at multiples of `interval`; evaluation is at the midpoints, which are
+    never used to pin position or estimate course, so the residual is honest drift.
+    Returns {rmse, p95, xtrack_p95} in metres. The PASS/KILL gate is stated in P95
+    (radial P95 <= 20-30 m, cross-track P95 < 10-15 m), so report P95 alongside RMSE.
+    All-NaN for a non-finite interval (open-loop: nothing is held out)."""
+    nan = {"rmse": float("nan"), "p95": float("nan"), "xtrack_p95": float("nan")}
+    if not np.isfinite(interval):
+        return nan
+    track = reanchored_track(step_t, step_len, raw_heading, gnss_t, gnss_ne, interval)
+    te = np.arange(step_t[0] + interval / 2.0, step_t[-1], interval)
+    if te.size == 0:
+        return nan
+    pred = interp_ne(step_t, track, te)
+    truth = interp_ne(gnss_t, gnss_ne, te)
+    radial = np.hypot(*(pred - truth).T)
+    # cross-track vs GPS direction (OSM-free); needs >=2 pts for the path tangent
+    xtrack_p95 = float("nan")
+    if te.size >= 2:
+        cross, _ = decompose_error(pred, truth)
+        xtrack_p95 = float(np.percentile(np.abs(cross), 95))
+    return {"rmse": float(np.sqrt(np.mean(radial ** 2))),
+            "p95": float(np.percentile(radial, 95)),
+            "xtrack_p95": xtrack_p95}
 
 
 def heldout_reanchor_rmse(step_t: np.ndarray,
@@ -27,20 +61,9 @@ def heldout_reanchor_rmse(step_t: np.ndarray,
     gnss_ne: np.ndarray,
     interval: float,
 ) -> float:
-    """RMSE (m) of a cadence-re-anchored track at the held-out mid-cadence times.
-
-    Anchors land at multiples of `interval`; evaluation is at the midpoints, which are
-    never used to pin position or estimate course, so the residual is honest drift.
-    Returns NaN for a non-finite interval (open-loop: nothing is held out)."""
-    if not np.isfinite(interval):
-        return float("nan")
-    track = reanchored_track(step_t, step_len, raw_heading, gnss_t, gnss_ne, interval)
-    te = np.arange(step_t[0] + interval / 2.0, step_t[-1], interval)
-    if te.size == 0:
-        return float("nan")
-    pred = interp_ne(step_t, track, te)
-    truth = interp_ne(gnss_t, gnss_ne, te)
-    return float(np.sqrt(np.mean(np.hypot(*(pred - truth).T) ** 2)))
+    """RMSE (m) of the held-out re-anchor residual; see heldout_reanchor_stats."""
+    return heldout_reanchor_stats(step_t, step_len, raw_heading,
+                                  gnss_t, gnss_ne, interval)["rmse"]
 
 
 def checkpoint_errors(step_t: np.ndarray,

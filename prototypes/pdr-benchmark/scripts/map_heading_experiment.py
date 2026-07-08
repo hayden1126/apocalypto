@@ -1,16 +1,23 @@
-"""B1 experiment: does a map-derived heading bound gyro PDR drift on the 595 m walk?
+"""B1 experiment: does a map-derived heading bound gyro PDR drift?
 
-PRELIMINARY / venue-caveated. The ma_ling block is a cramped 3-loop, short-edge case,
-and phone data has no clean per-step heading truth, so the honest signals are INTEGRATED:
-GPS-free loop closure (does map-heading kill the ~39 m precession over 3 loops?) and
-whole-track cross-track vs GPS. The decisive test needs the 2-3 km walk's distinct-street
-geometry. Single-pass match on the drifted gyro-PDR track means wrong-edge snapping on
-later loops is a known confound (a real system would iterate match<->correct).
+Phone data has no clean per-step heading truth, so the honest signals are INTEGRATED:
+GPS-free loop closure and whole-track cross-track vs GPS, against a GNSS-15 s re-anchored
+reference. The corrector is SINGLE-PASS: it matches the drifted gyro-PDR track once and
+resets heading to the matched edge bearings. This is circular when drift is large (you need
+good heading to match, but you are matching to fix heading), so wrong-edge snapping is the
+core confound. Measured on the 595 m ma_ling block (cramped 3-loop, 18 m median snap) and
+the ~2 km ma_ling_2km walk (distinct streets but ~25% raw drift, 70 m median snap): in both,
+single-pass matching snaps to wrong edges and the corrector does not beat pure gyro. The
+coverage split shows the MECHANISM works where the track snaps to the correct edge; the
+matching is the bottleneck. A viable corrector must iterate match<->correct or map-match a
+GNSS-re-anchored (low-drift) track.
 
-Usage: PYTHONPATH=. .venv/bin/python scripts/map_heading_experiment.py [export_dir]
-Writes out/map_heading.png.
+Usage: PYTHONPATH=. .venv/bin/python scripts/map_heading_experiment.py [export_dir] \
+           [--k K] [--name NAME]
+Writes out/<name>_map_heading.png. The OSM graph cache is keyed on --name
+(data/osm_cache/<name>.graphml) so a new walk does not reuse a stale bbox's graph.
 """
-import sys
+import argparse
 
 import matplotlib
 
@@ -28,24 +35,28 @@ from pdr_bench.pdr.trusted_fix import trusted_fix_mask  # noqa: E402
 from pdr_bench.run import decimate  # noqa: E402
 from pdr_bench.viz.plot import plot_overlay  # noqa: E402
 
-K = 0.537
-
-
 def _rms(x: np.ndarray) -> float:
     return float(np.sqrt(np.mean(np.asarray(x) ** 2)))
 
 
 def main() -> None:
-    export = sys.argv[1] if len(sys.argv) > 1 else "data/phone/ma_ling_walk"
-    s = load_phone(export, name="ma_ling")
-    r = run_pdr(s, use_mag=False, k=K)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("export_dir", nargs="?", default="data/phone/ma_ling_walk")
+    ap.add_argument("--k", type=float, default=0.537,
+        help="Weinberg step gain from a measured calibration leg (see calibrate_leg.py)")
+    ap.add_argument("--name", default="ma_ling",
+        help="session/label; also keys the OSM cache data/osm_cache/<name>.graphml")
+    a = ap.parse_args()
+
+    s = load_phone(a.export_dir, name=a.name)
+    r = run_pdr(s, use_mag=False, k=a.k)
     gr = phone_georef(s)
     pdr_utm = gr.ne_to_utm(r.ne)
 
     ll = gr.ne_to_lonlat(s.gt_ne)
     b = 0.0018
     bbox = (ll[:, 0].min() - b, ll[:, 1].min() - b, ll[:, 0].max() + b, ll[:, 1].max() + b)
-    graph = walk_graph(bbox, gr.utm, "data/osm_cache/ma_ling.graphml")
+    graph = walk_graph(bbox, gr.utm, f"data/osm_cache/{a.name}.graphml")
 
     idx = decimate(pdr_utm, 3.0)
     mr = match_track(graph, pdr_utm[idx], obs_noise=25.0)
@@ -82,7 +93,7 @@ def main() -> None:
     print(f"map-heading experiment on {s.name}: {len(idx)} matched pts, "
           f"{int(valid.sum())} valid edge bearings, {int(g.sum())} tight (<{GATE_M:g} m), "
           f"frac_matched {mr.frac_matched:.2f}")
-    print("(PRELIMINARY, venue-caveated: cramped 3-loop block, no clean heading truth)\n")
+    print("(single-pass match on the drifted gyro-PDR track; no clean per-step heading truth)\n")
     print(f"{'track':<24}{'loop_closure_m':>16}{'xtrack_rmse_m':>15}{'rmse_vs_gps_m':>15}")
     print("-" * 70)
     for name, tr in [("pure PDR (gyro)", pure), ("map-heading (all)", mapc),
@@ -108,20 +119,25 @@ def main() -> None:
         return loop_closure_error(tr) < 0.9 * lc_pure and xt(tr) < 0.9 * xt_pure
 
     if beats(mapc) or beats(mapg):
-        print("\nVERDICT: map heading REDUCES drift here (preliminary; verify on the 2-3 km walk)")
+        print("\nVERDICT: map heading REDUCES drift here (single-pass; an iterated "
+              "match<->correct loop should do at least as well).")
     else:
-        print("\nVERDICT: map heading does NOT robustly bound drift on this cramped block. "
-              "Neither the naive nor the confidence-gated corrector beats pure gyro on BOTH "
-              "loop closure and cross-track (the gate trades a cross-track gain for a worse "
-              f"loop closure), and both are far from the GNSS reference. Root cause: {med:.0f} m "
-              "median matched-edge snap distance, i.e. wrong-edge snapping of the drifted track "
-              "in this short-edge 3-loop venue. Consistent with pushback #2, but confounded by "
-              "venue + single-pass matching: re-run on the 2-3 km walk before concluding.")
+        print(f"\nVERDICT: single-pass map heading does NOT bound drift here (frac_matched "
+              f"{mr.frac_matched:.2f}, {med:.0f} m median matched-edge snap). Neither the naive "
+              "nor the confidence-gated corrector beats pure gyro on BOTH loop closure and "
+              "cross-track, and both are far from the GNSS reference. The failure is in the "
+              "MATCHING, not the mechanism: the coverage split shows map heading helps where the "
+              "track snaps close (correct edge) and hurts where it snaps far (wrong edge). "
+              "Single-pass matching of a drifted PDR track snaps to wrong edges; a viable "
+              "corrector must iterate match<->correct or map-match a GNSS-re-anchored (low-drift) "
+              "track. This walk has GNSS throughout, so re-anchoring alone already bounds drift "
+              "(see the GNSS row); the map's heading value is only testable in GNSS-denied stretches.")
 
+    out_png = f"out/{a.name}_map_heading.png"
     plot_overlay(graph, gr.ne_to_utm(gps), gr.ne_to_utm(pure), gr.ne_to_utm(mapc),
                  f"{s.name}: map-heading (orange) vs pure PDR (blue) vs GPS (green)",
-                 "out/map_heading.png")
-    print("\nwrote out/map_heading.png")
+                 out_png)
+    print(f"\nwrote {out_png}")
 
 
 if __name__ == "__main__":
