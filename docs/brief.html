@@ -211,14 +211,14 @@
 <header class="masthead">
   <canvas id="contour" aria-hidden="true"></canvas>
   <div class="masthead__inner reveal">
-    <div class="eyebrow"><span class="tick"></span> Field Research Brief · 2026-07-07 · Pre-design phase</div>
+    <div class="eyebrow"><span class="tick"></span> Field Research Brief · updated 2026-07-08 · Prototyping — steps 1–2 measured</div>
     <h1 class="title">Navigation for when the grid is gone</h1>
     <p class="lede">A technology reality-check for an <b>offline, GPS-degraded</b> map + phone-to-phone hazard-sharing app built for disaster and civil-unrest zones. Four capability tracks, researched and adversarially verified against the evidence.</p>
     <div class="metabar">
       <div class="cell"><span class="k">Threat drivers</span><span class="v">Natural disaster + civil unrest</span></div>
       <div class="cell"><span class="k">Platform</span><span class="v">Phone-first + optional LoRa/solar</span></div>
       <div class="cell"><span class="k">Tracks</span><span class="v">Positioning · Vision · Mesh · Power</span></div>
-      <div class="cell"><span class="k">Evidence</span><span class="v">49 agents · 134 sources · 24 claims verified</span></div>
+      <div class="cell"><span class="k">Evidence</span><span class="v">105 agents · 3 runs · 56 claims verified</span></div>
     </div>
   </div>
 </header>
@@ -235,6 +235,11 @@
       <span class="pill">Multi-day power on a bank + folding panel</span>
       <span class="pill">Short-range BLE / longer-range LoRa messaging</span>
     </div>
+  </div>
+
+  <div class="reveal" style="margin:26px 0 36px;padding:18px 20px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;box-shadow:var(--shadow)">
+    <div style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:.55em">Measured since publish · 2026-07-08</div>
+    <p style="margin:0;color:var(--ink-dim);max-width:74ch">Two prototype steps now test the positioning spine on real data. <b style="color:var(--ink)">Step 1</b> (open IMU benchmark): gyro-only dead reckoning holds ~3% of distance and periodic trusted-GNSS re-anchoring bounds the drift to street level, while the magnetometer only hurts. <b style="color:var(--ink)">Step 2</b> (first real-phone walk — iPhone, ~595 m, 3 loops): ~6.5% drift, still bounded, but a phone's faster heading drift needs a trusted fix every <b style="color:var(--ink)">~15–20 s</b>, not 30. Converged phone GPS was ~1–2 m (the 14 m iOS self-reports is pessimistic). The <b style="color:var(--ink)">multi-kilometer hold</b> is the one open question.</p>
   </div>
 
   <section>
@@ -294,7 +299,7 @@
     <div class="ladder">
       <div class="rung">
         <div class="lyr">L0</div>
-        <div class="body"><h4>Trusted GNSS reset</h4><p>Raw GNSS, anomaly-gated (drop mock-provider / C-N0 anomalies), duty-cycled to one fix per 30–60 s. In the unrest profile, downgraded to advisory-only. Collapses the cone when it passes.</p></div>
+        <div class="body"><h4>Trusted GNSS reset</h4><p>Raw GNSS, anomaly-gated (drop mock-provider / C-N0 anomalies), duty-cycled to one fix per ~15–30 s (a phone's faster heading drift needs the tighter end — measured step 2). In the unrest profile, downgraded to advisory-only. Collapses the cone when it passes.</p></div>
         <span class="prop">Absolute · scarce</span>
       </div>
       <div class="arrow">↓ on loss / spoof</div>
@@ -478,7 +483,7 @@
 
   <footer>
     <span>APOCALYPTO · TECHNOLOGY RESEARCH BRIEF</span>
-    <span>Next: design &amp; spec cycle → MVP</span>
+    <span>Next: multi-kilometer phone field test → MVP</span>
   </footer>
 </div>
 

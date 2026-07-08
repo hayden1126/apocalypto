@@ -6,13 +6,15 @@ software is built (`pdr_bench/io/phone.py`, `run_phone.py`, `scripts/reanchor_ph
 `pdr_bench/eval/phone_metrics.py`); this is the legwork spec. Closes the two open unknowns:
 phone-grade IMU noise, and true multi-km length.
 
-> **Shakedown update (2026-07-08).** A ~595 m shakedown walk (full findings in `STATUS.md`) already
-> answered the phone-grade-IMU unknown (drift ~6.5%, bounded by re-anchoring) and flagged three
-> assumptions in THIS doc that need a decision before the multi-km walk, NOT yet rewritten into the
-> thresholds below: (1) the "~3-10 m accurate" phone-GPS premise measured **14 m median** on the
-> shakedown phone/venue; (2) the PASS guard's "~5 m GPS floor" is really ~14 m here, which eats the
-> 20-30 m headroom, so either find a better-GPS open-sky venue or loosen the threshold; (3) the
-> "mandated ~30 s" re-anchor cadence is too loose for a phone (30 s -> 14.7 m; needs ~15-20 s).
+> **Shakedown update (2026-07-08).** A ~595 m shakedown walk (full findings in `STATUS.md`)
+> answered the phone-grade-IMU unknown (drift ~6.5%, bounded by re-anchoring) and refined this doc's
+> SETUP, not its thresholds (which hold): (1) the "~3-10 m accurate" GPS premise is CONFIRMED once the
+> receiver converges (measured ~1-2 m stationary; iOS self-reported `horizontalAccuracy` is ~7x
+> pessimistic, so do not trust the reported 14 m), BUT the receiver must be WARMED to a full lock
+> before recording (cold start gave 35 m scatter over the first ~90 s) and outlier fixes (one 808 m)
+> rejected; (2) the PASS guard's "~5 m GPS floor" HOLDS (actual floor ~1-2 m); (3) the "mandated
+> ~30 s" re-anchor cadence is too loose for a phone (30 s -> 14.7 m; needs ~15-20 s) -- a phone
+> HEADING-drift penalty, independent of GPS quality.
 
 ## Why the protocol is shaped this way
 
