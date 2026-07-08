@@ -246,7 +246,7 @@
         <h3>GPS-denied positioning</h3>
         <p class="bl">A drift-limited problem. Step counting is solved (~99.5%); heading is the binding constraint, and no validated multi-kilometer phone-only benchmark exists anywhere.</p>
         <div class="split">
-          <div><div class="lab">Shippable now</div><p>IMU dead reckoning snapped to a cached OSM graph (map-matching cuts drift 40–97%), with opportunistic GNSS resets.</p></div>
+          <div><div class="lab">Shippable now</div><p>IMU dead reckoning snapped to a cached OSM graph (map-matching keeps the right street; it does not erase drift), with periodic trusted-GNSS resets that bound it.</p></div>
           <div><div class="lab">Frontier</div><p>Foot-mounted ZUPT pod (best accessory bet, buildable now); UWB phone-to-phone, ~2–4 yrs.</p></div>
         </div>
         <p class="breaks"><span class="m">FAILS</span><span><b>Compass 30–90° off</b> in rubble and steel — exactly this app's terrain — plus jamming/spoofing.</span></p>
@@ -306,8 +306,8 @@
       <div class="arrow">↓ bound the drift</div>
       <div class="rung">
         <div class="lyr">L2</div>
-        <div class="body"><h4>Map-matching to cached OSM</h4><p>On-device HMM/Viterbi snaps the drifting trace onto plausible graph edges (~5 m corrected). Mandatory — it bounds the lateral drift the compass cannot. Needs an off-graph state for open-field evacuation.</p></div>
-        <span class="prop">Drift eliminator</span>
+        <div class="body"><h4>Map-matching to cached OSM</h4><p>On-device HMM/Viterbi snaps the drifting trace onto plausible graph edges (a ~5 m graph-offset floor). It disambiguates which street, cutting lateral drift on dense grids, but cannot fix how far along, which needs a GNSS reset. Needs an off-graph state for open-field evacuation.</p></div>
+        <span class="prop">Which-street disambiguator</span>
       </div>
       <div class="arrow">↓ when a fix is possible</div>
       <div class="rung">

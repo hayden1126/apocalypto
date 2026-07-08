@@ -8,6 +8,7 @@ osmnx>=1.9            # OSM walk graph -> networkx, GraphML cache
 leuvenmapmatching>=1.1  # pure-Python HMM map-matching with non-emitting states
 matplotlib>=3.8
 pyproj>=3.6           # lat/lon <-> UTM
+pyubx2>=1.2           # parse u-blox UBX NAV-PVT fixes (GEOLOC gnss.ubx)
 shapely>=2.0
 networkx>=3.2
 rtree>=1.1            # spatial index for leuven matcher

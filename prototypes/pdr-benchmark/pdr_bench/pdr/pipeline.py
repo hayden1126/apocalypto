@@ -47,8 +47,11 @@ def run_pdr(session: ImuSession,
     fs: float = 100.0,
     use_mag: bool = True,
     k: float | None = None,
+    mag_gate_tol: tuple[float, float] | None = None,
 ) -> PdrResult:
-    """Full PDR pipeline; k is Weinberg gain (calibrated to gt distance if None)."""
+    """Full PDR pipeline; k is Weinberg gain (calibrated to gt distance if None).
+
+    mag_gate_tol = (mag_tol, dip_tol_rad) selects gated MARG heading (see estimate_yaw)."""
     grid = common_grid(session, fs)
     accel = resample(session.accel_t, session.accel, grid)
     gyro = resample(session.gyro_t, session.gyro, grid)
@@ -57,7 +60,7 @@ def run_pdr(session: ImuSession,
 
     accel_mag = np.hypot(np.hypot(accel[:, 0], accel[:, 1]), accel[:, 2])
     steps = detect_steps(grid, accel_mag, fs)
-    yaw = estimate_yaw(accel, gyro, mag, fs, gyro_bias, use_mag)
+    yaw = estimate_yaw(accel, gyro, mag, fs, gyro_bias, use_mag, mag_gate_tol)
     step_yaw = yaw[steps.idx]
 
     if k is None:
@@ -81,16 +84,21 @@ def run_pdr(session: ImuSession,
 def heading_only_reference(session: ImuSession,
     fs: float = 100.0,
     use_mag: bool = True,
+    mag_gate_tol: tuple[float, float] | None = None,
 ) -> PdrResult:
     """Integrate ground-truth stride instants + lengths with estimated heading.
 
-    Removes step-detection and step-length error, leaving heading error alone."""
+    Removes step-detection and step-length error, leaving heading error alone.
+    mag_gate_tol = (mag_tol, dip_tol_rad) selects gated MARG heading (see estimate_yaw)."""
+    if session.stride_len.size == 0:
+        raise ValueError("heading_only_reference needs foot-mounted strides; "
+                         "unavailable for phone sessions")
     grid = common_grid(session, fs)
     accel = resample(session.accel_t, session.accel, grid)
     gyro = resample(session.gyro_t, session.gyro, grid)
     mag = resample(session.mag_t, session.mag, grid)
     gyro_bias = estimate_gyro_bias(session)
-    yaw = np.unwrap(estimate_yaw(accel, gyro, mag, fs, gyro_bias, use_mag))
+    yaw = np.unwrap(estimate_yaw(accel, gyro, mag, fs, gyro_bias, use_mag, mag_gate_tol))
 
     # drop the leading zero-length stride, then sample heading at each stride instant
     valid = session.stride_len > 0
