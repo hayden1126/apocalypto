@@ -28,6 +28,8 @@ Everything in Workstreams A and B is designed so that when this walk lands, the 
 
 These touch scoring and hygiene, not algorithms. They are no-regret. Build in this order.
 
+> **STATUS: A1, A2, A3 all SHIPPED 2026-07-08 (PR #1, branch `workstream-a-trusted-fix-checkpoints`), 44 tests green.** The `acc<8` gate was actively starving the loop (8/524 fixes trusted, all before the first step); `trusted_fix_mask` trusts 515/524 and moves held-out re-anchor RMSE 30 s 22.2 -> 14.9 m, 15 s 11.4 -> 4.0 m. Blast radius verified contained (run_phone metrics byte-identical, loop closure steady 39.0 m). A2 is two mechanisms + a backstop per the fold below; the innovation gate is built but opt-in/off (pure position-domain). Honest limit: gross faults only, slow bias/spoof passes to the degrade-to-DR path.
+
 ### A1. Checkpoint wiring (independent of everything)
 - **Why:** the protocol mandates surveyed checkpoints and M4 (checkpoint P95) is a PASS/KILL criterion, but `checkpoint_errors` in `pdr_bench/eval/phone_metrics.py` exists and is only called by a unit test. No CSV ingestion exists; the shakedown `Annotation.csv` is 0 bytes.
 - **Build:** a small surveyed-checkpoint CSV loader (schema `label, lat, lon` or `label, n, e`), converted to `marker_ne` in the session frame, plus event-marker times from Sensor Logger `Annotation.csv`. Wire the existing `checkpoint_errors` into `run_phone.py` / `reanchor_phone.py` and print per-checkpoint error against the M4 bound.
