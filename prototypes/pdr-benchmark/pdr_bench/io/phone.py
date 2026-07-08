@@ -70,6 +70,7 @@ def load_phone(export_dir: str | Path,
         stride_t=np.zeros(0), stride_len=np.zeros(0),
         meta={"utm_epsg": utm.to_epsg(),
               "ne_origin_en": (e0, n0),
+              "rebase_t0_ns": int(t0),
               "gps_horizontal_acc_m": loc["horizontalAccuracy"].to_numpy(float),
               "accel_median_norm_m_s2": norm,
               "export_dir": str(d)},
@@ -85,3 +86,71 @@ def phone_georef(session: ImuSession) -> GeoRef:
     e0, n0 = session.meta["ne_origin_en"]
     return GeoRef(r=np.eye(2), t=np.array([e0, n0]),
                   utm=CRS.from_epsg(session.meta["utm_epsg"]), residual_m=0.0)
+
+
+def _survey_ne(session: ImuSession,
+    cp: pd.DataFrame,
+) -> np.ndarray:
+    """Surveyed checkpoint coords -> local NE metres in the session frame."""
+    cols = set(cp.columns)
+    if {"lat", "lon"} <= cols:
+        return phone_georef(session).lonlat_to_ne(cp["lat"].to_numpy(float),
+                                                  cp["lon"].to_numpy(float))
+    if {"n", "e"} <= cols:
+        return cp[["n", "e"]].to_numpy(float)
+    raise ValueError(f"checkpoint csv needs lat,lon or n,e columns; got {sorted(cols)}")
+
+
+def load_checkpoints(session: ImuSession,
+    checkpoint_csv: str | Path,
+    *,
+    annotation_name: str = "Annotation.csv",
+    join: str = "label",
+    n_bookends: int = 2,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """Surveyed checkpoints matched to Sensor Logger event marks.
+
+    Returns (marker_t, marker_ne, labels): crossing times on the loader's rebased-
+    seconds clock, surveyed coords in local NE metres, matched labels. Empty arrays
+    when Annotation.csv is absent or empty (the shakedown case). The checkpoint csv is
+    `label,lat,lon` (WGS84) or `label,n,e`; join="label" pairs annotation text to
+    checkpoint label (bookends/blanks drop out, repeated crossings each score),
+    join="order" drops n_bookends marks and zips the rest with checkpoints in file order.
+    """
+    annot_path = Path(session.meta["export_dir"]) / annotation_name
+    if not annot_path.exists() or annot_path.stat().st_size == 0:
+        return np.zeros(0), np.zeros((0, 2)), []
+    annot = pd.read_csv(annot_path)
+    marker_t_all = (annot["time"].to_numpy(np.int64)
+                    - session.meta["rebase_t0_ns"]) * 1e-9
+
+    cp = pd.read_csv(checkpoint_csv)
+    survey_ne = _survey_ne(session, cp)
+    labels = [str(x) for x in cp["label"]]
+
+    if join == "label":
+        text_col = next((c for c in ("text", "label", "annotation")
+                         if c in annot.columns), None)
+        if text_col is None:
+            raise ValueError("label join needs a text/label/annotation column")
+        survey = {lab.strip().lower(): ne for lab, ne in zip(labels, survey_ne)}
+        if len(survey) != len(labels):
+            raise ValueError("duplicate checkpoint labels are ambiguous for a label join")
+        rows = [(mt, survey[key], str(txt))
+                for txt, mt in zip(annot[text_col].astype(str), marker_t_all)
+                if (key := txt.strip().lower()) in survey]
+        marker_t = np.array([r[0] for r in rows])
+        marker_ne = np.array([r[1] for r in rows]) if rows else np.zeros((0, 2))
+        matched = [r[2] for r in rows]
+    elif join == "order":
+        order = np.argsort(marker_t_all)
+        lead = n_bookends // 2
+        inner = marker_t_all[order][lead: len(order) - (n_bookends - lead)]
+        if len(inner) != len(labels):
+            raise ValueError(f"order join: {len(inner)} inner marks != {len(labels)} checkpoints")
+        marker_t, marker_ne, matched = inner, survey_ne, labels
+    else:
+        raise ValueError(f"join must be 'label' or 'order', got {join!r}")
+
+    srt = np.argsort(marker_t)
+    return marker_t[srt], marker_ne[srt], [matched[i] for i in srt]
