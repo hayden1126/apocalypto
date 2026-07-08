@@ -6,6 +6,14 @@ software is built (`pdr_bench/io/phone.py`, `run_phone.py`, `scripts/reanchor_ph
 `pdr_bench/eval/phone_metrics.py`); this is the legwork spec. Closes the two open unknowns:
 phone-grade IMU noise, and true multi-km length.
 
+> **Shakedown update (2026-07-08).** A ~595 m shakedown walk (full findings in `STATUS.md`) already
+> answered the phone-grade-IMU unknown (drift ~6.5%, bounded by re-anchoring) and flagged three
+> assumptions in THIS doc that need a decision before the multi-km walk, NOT yet rewritten into the
+> thresholds below: (1) the "~3-10 m accurate" phone-GPS premise measured **14 m median** on the
+> shakedown phone/venue; (2) the PASS guard's "~5 m GPS floor" is really ~14 m here, which eats the
+> 20-30 m headroom, so either find a better-GPS open-sky venue or loosen the threshold; (3) the
+> "mandated ~30 s" re-anchor cadence is too loose for a phone (30 s -> 14.7 m; needs ~15-20 s).
+
 ## Why the protocol is shaped this way
 
 A phone walk has no independent ground truth: the phone GPS is both the scoring reference

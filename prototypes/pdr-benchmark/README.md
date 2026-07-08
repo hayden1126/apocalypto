@@ -52,6 +52,10 @@ Writes `out/<track>_metrics.json` and `out/<track>_overlay.png`.
   `out/reanchor_curve.png`). A trusted fix every ~30 s (~35 m) holds residual RMSE
   <=5-6 m on every track; every ~15 s reaches the ~3-4 m GNSS noise floor. Continuous
   GPS is not required, only occasional trusted fixes, with PDR bridging the gaps.
+- **Step-2 note (real phone, 2026-07-08):** these are Xsens (step-1) figures and do not
+  transfer directly to a phone. A ~595 m phone shakedown drifted ~6.5% (2x this) and needed a
+  tighter ~15-20 s re-anchor cadence (30 s gave ~15 m, not 5-6 m), because that phone's GPS was
+  ~14 m and phone PDR drifts faster. Full step-2 findings in `../../STATUS.md`.
 
 Run the sweep with `PYTHONPATH=. .venv/bin/python scripts/reanchor_experiment.py`.
 See `../../STATUS.md` for the full verdict and next-step decision.
