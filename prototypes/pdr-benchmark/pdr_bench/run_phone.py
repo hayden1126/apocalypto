@@ -74,7 +74,14 @@ def process_phone(export_dir: str,
             mr = match_track(graph, pdr_utm[idx], obs_noise=obs_noise)
             matched_utm = mr.snapped
             gtm = match_track(graph, gt_utm[idx], obs_noise=8.0)
-            out["matched_vs_gps"] = trajectory_metrics(matched_utm, gt_utm[idx], pl)
+            # the matcher can drop observations when coverage is thin (frac_matched < 1),
+            # so matched_utm may be shorter than idx; only score when it stays 1:1, else the
+            # per-point vs-GPS comparison would misalign (route_edge_overlap is set-based, safe).
+            if len(matched_utm) == len(idx):
+                out["matched_vs_gps"] = trajectory_metrics(matched_utm, gt_utm[idx], pl)
+            else:
+                out["matched_vs_gps"] = (f"skipped: sparse match "
+                                         f"({len(matched_utm)}/{len(idx)} obs matched)")
             out["route_edge_overlap"] = round(route_edge_overlap(gtm.nodes, mr.nodes), 3)
         pdr_plot, gt_plot = pdr_utm, gt_utm
     else:

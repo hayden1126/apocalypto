@@ -41,17 +41,30 @@ Sensor Logger by Kelvin Choi (cross-platform, free, one device clock, zipped per
 ## Per-walk procedure
 
 - **Route:** a closed loop returning to a single physical start/end mark, in a well-mapped
-  urban area (dense OSM footways), flat and dry, with real street corners. Prefer multiple
-  laps of a ~500 m loop to reach 2-3 km total (so closure error is sampled each lap and a
-  drift-vs-distance curve can be fit). One large loop is acceptable.
+  urban area (dense OSM footways), dry, with real street corners and distinct through-streets.
+  - **Elevation:** gentle grades / hill roads are fine and add realism -- the pipeline is 2D and
+    compares horizontal projections, so a 10% grade costs < 0.5% along-track (even a steep 20%
+    street ~2%), and loop closure is unaffected as long as you physically close the loop.
+    **Avoid stairs:** stair gait breaks the flat-calibrated Weinberg step length by ~10%+ (the
+    `k` from your flat calibration leg badly over-counts horizontal distance on steps), and
+    covered stairwells starve GPS re-anchoring. A few steps are fine; do not route through long
+    staircases, and never calibrate `k` on them.
+  - **Loop size (corrected by the B1 finding, 2026-07-08):** prefer a LARGER loop (>= ~1 km of
+    distinct, long-edged streets) walked as few laps as reach 2-3 km (~2-3 laps), NOT many laps
+    of a small block. Map-matching wrong-edge-snaps on a cramped, short-edge, over-repeated
+    circuit: the ~595 m shakedown's ~200 m block gave 18 m median snap distance and made
+    map-heading correction *worse* than raw gyro. A bigger distinct-street loop with fewer
+    repeats keeps snapping honest and limits drift accumulation across laps. Keep >= 2 laps +
+    CW/CCW so the per-lap drift-vs-distance curve still fits and heading bias still brackets.
+    Best balance: 2 laps of a ~1 km distinct-street loop, one CW and one CCW.
 - **Marks:** chalk/tape the exact start; photograph foot-on-mark at start and final return.
   Survey 4-8 intermediate checkpoint marks (tape/wheel or high-res orthoimagery, not raw OSM
   nodes); tap a logger event marker crossing each and at start/end.
 - **Static bookends (mandatory):** stand still >= 60 s on the start mark (phone already in
   pose) before the first step, and again >= 60 s after returning. The opening window seeds
   gyro-bias estimation; the opening-vs-closing bias delta measures gyro-bias drift.
-- **Calibration leg:** at the start, pace a tape/wheel-measured straight 60-100 m segment.
-  Its length sets a fixed Weinberg k (pass via `--k`); do NOT let k calibrate to GPS distance
+- **Calibration leg:** at the start, pace a tape/wheel-measured straight 60-100 m segment
+  **on flat ground**. Its length sets a fixed Weinberg k (pass via `--k`); do NOT let k calibrate to GPS distance
   for the headline number (that launders GPS distance into the step model and hides
   along-track error).
 - **Pose, two variants in order:** P1 held flat, screen up, pointing forward, steady (matches

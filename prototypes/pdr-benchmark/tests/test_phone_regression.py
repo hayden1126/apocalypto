@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pdr_bench.eval.phone_metrics import heldout_reanchor_rmse, loop_closure_error
+from pdr_bench.eval.phone_metrics import heldout_reanchor_stats, loop_closure_error
 from pdr_bench.io.phone import load_phone
 from pdr_bench.pdr.pipeline import run_pdr
 from pdr_bench.pdr.reanchor import reanchored_track
@@ -22,10 +22,12 @@ DATA = Path(__file__).resolve().parent.parent / "data/phone/ma_ling_walk"
 K = 0.537                        # honest step gain from the counted 15.3 m calibration leg
 
 # BASELINE captured 2026-07-08 on ma_ling_walk (595 m real walk, 3 loops, k=0.537).
-# Held-out re-anchor RMSE (m) by cadence interval (s), gated as reanchor_phone.py gates.
-#   PRE-A2  (acc < 8.0):        {30: 22.2, 15: 11.4}   (starved: 8/524 fixes trusted)
-#   POST-A2 (trusted_fix_mask): {30: 14.9, 15: 4.0}    (515/524 fixes trusted)
-BASELINE = {30.0: 14.9, 15.0: 4.0}    # POST-A2 (trusted_fix_mask)
+# Held-out re-anchor stats (m) by cadence interval (s), gated as reanchor_phone.py gates.
+#   PRE-A2  (acc < 8.0):        rmse {30: 22.2, 15: 11.4}   (starved: 8/524 fixes trusted)
+#   POST-A2 (trusted_fix_mask): rmse {30: 14.9, 15: 4.0}    (515/524 fixes trusted)
+# P95 columns added 2026-07-08 (the gate is P95-stated); measured post-A2.
+BASELINE_RMSE = {30.0: 14.9, 15.0: 4.0}     # POST-A2 (trusted_fix_mask)
+BASELINE_P95 = {30.0: 25.6, 15.0: 7.1}      # radial P95, same gating
 
 pytestmark = pytest.mark.skipif(not DATA.exists(), reason="phone walk dataset not present")
 
@@ -53,8 +55,11 @@ def test_heldout_rmse_matches_baseline():
     s = load_phone(DATA, name="ma_ling")
     r = run_pdr(s, use_mag=False, k=K)
     gnss_t, gnss_ne = _trusted(s)
-    for interval, expected in BASELINE.items():
-        rmse = heldout_reanchor_rmse(r.step_t, r.step_len, r.raw_heading,
-                                     gnss_t, gnss_ne, interval)
-        assert abs(rmse - expected) < max(2.0, 0.15 * expected), \
-            f"held-out RMSE at {interval:g}s = {rmse:.1f} m, expected ~{expected} m"
+    for interval in BASELINE_RMSE:
+        st = heldout_reanchor_stats(r.step_t, r.step_len, r.raw_heading,
+                                    gnss_t, gnss_ne, interval)
+        exp_rmse, exp_p95 = BASELINE_RMSE[interval], BASELINE_P95[interval]
+        assert abs(st["rmse"] - exp_rmse) < max(2.0, 0.15 * exp_rmse), \
+            f"held-out RMSE at {interval:g}s = {st['rmse']:.1f} m, expected ~{exp_rmse} m"
+        assert abs(st["p95"] - exp_p95) < max(2.0, 0.15 * exp_p95), \
+            f"held-out P95 at {interval:g}s = {st['p95']:.1f} m, expected ~{exp_p95} m"

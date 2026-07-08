@@ -19,7 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from pdr_bench.eval.phone_metrics import (checkpoint_errors, heldout_reanchor_rmse,  # noqa: E402
+from pdr_bench.eval.phone_metrics import (checkpoint_errors, heldout_reanchor_stats,  # noqa: E402
                                           loop_closure_error)
 from pdr_bench.io.phone import load_checkpoints, load_phone  # noqa: E402
 from pdr_bench.pdr.pipeline import run_pdr  # noqa: E402
@@ -71,17 +71,18 @@ def main() -> None:
                 print(f"  {lab:>12}: {e:5.1f} m")
             print(f"  {'p95':>12}: {np.percentile(ce, 95):5.1f} m")
 
-    # held-out re-anchor cadence curve
-    print(f"\n{'interval_s':>10} {'heldout_rmse_m':>14}")
-    print("-" * 26)
+    # held-out re-anchor cadence curve (RMSE + the P95s the PASS/KILL gate is stated in)
+    print(f"\n{'interval_s':>10} {'rmse_m':>10} {'p95_m':>10} {'xtrack_p95_m':>14}")
+    print("-" * 46)
     finite, vals = [], []
     for iv in INTERVALS:
-        rmse = heldout_reanchor_rmse(r.step_t, r.step_len, r.raw_heading,
-                                     gnss_t, gnss_ne, iv)
-        print(f"{'inf' if np.isinf(iv) else int(iv):>10} {rmse:14.1f}")
+        st = heldout_reanchor_stats(r.step_t, r.step_len, r.raw_heading,
+                                    gnss_t, gnss_ne, iv)
+        print(f"{'inf' if np.isinf(iv) else int(iv):>10} "
+              f"{st['rmse']:10.1f} {st['p95']:10.1f} {st['xtrack_p95']:14.1f}")
         if np.isfinite(iv):
             finite.append(iv)
-            vals.append(rmse)
+            vals.append(st['rmse'])
 
     fig, ax = plt.subplots(figsize=(8, 5.5))
     ax.plot(finite, vals, "o-", label=f"{a.name} ({int(s.gt_path_length)} m)")
