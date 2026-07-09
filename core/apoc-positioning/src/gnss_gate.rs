@@ -4,7 +4,7 @@
 use apoc_geo::interp_ne;
 
 fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
+    (a[0] - b[0]).hypot(a[1] - b[1])
 }
 
 /// First fix time whose forward window is tight (radius < `lock_disp_m`) AND contiguous.

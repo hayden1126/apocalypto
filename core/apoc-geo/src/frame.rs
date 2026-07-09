@@ -3,6 +3,9 @@
 
 /// Linearly interpolate an NE track onto query times, clamped to the source range.
 /// `t_src` must be strictly increasing. Mirrors `numpy.interp` per component.
+///
+/// # Panics
+/// Panics if `t_src` (and thus `ne_src`) is empty.
 pub fn interp_ne(t_src: &[f64], ne_src: &[[f64; 2]], t_query: &[f64]) -> Vec<[f64; 2]> {
     t_query
         .iter()
@@ -30,5 +33,6 @@ fn interp1(t: &[f64], ne: &[[f64; 2]], tq: f64, c: usize) -> f64 {
     }
     let (t0, t1) = (t[lo], t[hi]);
     let (y0, y1) = (ne[lo][c], ne[hi][c]);
-    y0 + (y1 - y0) * (tq - t0) / (t1 - t0)
+    let slope = (y1 - y0) / (t1 - t0);
+    slope * (tq - t0) + y0
 }
