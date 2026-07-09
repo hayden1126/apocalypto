@@ -402,7 +402,7 @@ fn trusted_fix_mask_roundtrip_null_params_and_nan_backstop() {
         gnss_ne.extend_from_slice(&[i as f64, 0.0]);
     }
     gnss_ne[10] = 800.0;
-    let mut acc = vec![14.0; 10];
+    let mut acc = [14.0; 10]; // an array, not vec!: clippy::useless_vec under -D warnings
     acc[3] = 807.0;
 
     // params = null means core defaults (backstop 50): rejects both 3 and 5.
