@@ -1,6 +1,6 @@
 # Slice 0b (foundations): apoc-ffi crossing + region-baker dark PMTiles package
 
-> **STATUS: PLANNED, NOT YET EXECUTED (saved 2026-07-09 for later).** Approval-pending; do NOT assume any of this is built. Pick up here next session. The exploration + two design passes that back this plan (full file contents/code for every task) were produced in the session dated 2026-07-09; re-derive or re-run the design agents if the code detail is needed and this file is the only survivor. Machine-local original: `~/.claude/plans/what-is-the-status-enumerated-shore.md`.
+> **STATUS: EXECUTED 2026-07-09.** Both groups are built, review-hardened, pushed, and open as PRs: Group A on `slice-0b-apoc-ffi` (PR #5), Group B on `slice-0b-region-baker` (PR #6). Read the two per-group plan docs (`2026-07-09-slice-0b-apoc-ffi.md`, `2026-07-09-slice-0b-region-baker.md`), their reconciliation notes, and the code for current truth; this file is the as-approved planning artifact, and its task summaries and counts predate the build (it carries no reconciliation note of its own). Machine-local original: `~/.claude/plans/what-is-the-status-enumerated-shore.md`.
 >
 > Two independent foundations for slice 0b, both fully verifiable on this WSL2 box (no Flutter, no Mac). Recommend shipping as **two separate PRs** (Rust FFI; map package) since they touch unrelated subsystems. Full house-style plan docs with complete code are authored into `docs/superpowers/plans/` as the first execution step of each (see Execution).
 
