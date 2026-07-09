@@ -1,0 +1,12 @@
+{
+  "id": "ma-ling",
+  "version": 1,
+  "package_version": "ma-ling@1",
+  "name": "Ma On Shan / Ma Ling Path, Hong Kong (2 km walk validation area)",
+  "bbox": [114.18764, 22.39089, 114.22764, 22.42089],
+  "maxzoom": 15,
+  "planet": "https://build.protomaps.com/20260708.pmtiles",
+  "flavor": "dark",
+  "lang": "en",
+  "graph_crs": "EPSG:32650"
+}
