@@ -137,13 +137,15 @@ REGION_KEYS = {"id", "version", "package_version", "bbox", "maxzoom", "planet", 
 
 
 def pmtiles_bin() -> str:
-    """Locate the go-pmtiles CLI (PATH first, then the default `go install` target)."""
-    found = shutil.which("pmtiles")
-    if found:
-        return found
-    candidate = Path.home() / "go" / "bin" / "pmtiles"
-    if candidate.exists():
-        return str(candidate)
+    """Locate the pmtiles CLI (PATH, then `~/go/bin`; `go install` names the binary go-pmtiles)."""
+    for name in ("pmtiles", "go-pmtiles"):
+        found = shutil.which(name) or (
+            str(Path.home() / "go" / "bin" / name)
+            if (Path.home() / "go" / "bin" / name).exists()
+            else None
+        )
+        if found:
+            return found
     sys.exit("pmtiles CLI not found: run `go install github.com/protomaps/go-pmtiles@latest`")
 
 
