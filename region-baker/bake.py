@@ -12,7 +12,9 @@ import urllib.request
 from pathlib import Path
 
 BAKER_DIR = Path(__file__).resolve().parent
-ASSETS_URL = "https://codeload.github.com/protomaps/basemaps-assets/tar.gz/refs/heads/main"
+# Pinned like the planet build: a rebake must reproduce the same bytes under one package_version.
+ASSETS_SHA = "028c18f713baecad011301ff7a69acc39bcc2ae7"
+ASSETS_URL = f"https://codeload.github.com/protomaps/basemaps-assets/tar.gz/{ASSETS_SHA}"
 MANIFEST_SCHEMA = "apoc.region-package/1"
 REGION_KEYS = {"id", "version", "package_version", "bbox", "maxzoom", "planet", "flavor", "lang"}
 
@@ -36,6 +38,9 @@ def load_region(path: Path) -> dict:
     missing = REGION_KEYS - region.keys()
     if missing:
         sys.exit(f"region config {path} is missing keys: {sorted(missing)}")
+    expected = f"{region['id']}@{region['version']}"
+    if region["package_version"] != expected:
+        sys.exit(f"package_version {region['package_version']!r} != {expected!r} (id@version): bump both together")
     return region
 
 
@@ -68,6 +73,14 @@ def cmd_check(region: dict, region_path: Path) -> None:
     print(f"PASS @protomaps/basemaps {installed} (pinned {pinned})")
 
 
+def cmd_clean(region: dict, region_path: Path) -> None:
+    """Delete the package dir so a full bake starts clean (stale files cannot enter the manifest)."""
+    dest = out_dir(region)
+    if dest.exists():
+        shutil.rmtree(dest)
+        print(f"cleaned {dest}")
+
+
 def cmd_tiles(region: dict, region_path: Path) -> None:
     """Range-extract the region bbox from the pinned planet build and verify the archive."""
     dest = out_dir(region)
@@ -89,30 +102,66 @@ def cmd_style(region: dict, region_path: Path) -> None:
 
 
 def fetch_assets() -> Path:
-    """Download (once, cached) and unpack the basemaps-assets tree; return its root."""
+    """Download (once, cached) and unpack the pinned basemaps-assets tree; return its root."""
     cache = BAKER_DIR / "cache"
-    root = cache / "basemaps-assets-main"
+    root = cache / f"basemaps-assets-{ASSETS_SHA}"
     if root.exists():
         return root
     cache.mkdir(exist_ok=True)
     print(f"+ fetch {ASSETS_URL}")
     with urllib.request.urlopen(ASSETS_URL) as resp:
         data = resp.read()
+    tmp = cache / f".tmp-{ASSETS_SHA}"
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    tmp.mkdir()
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-        tar.extractall(cache, filter="data")
+        tar.extractall(tmp, filter="data")
+    # publish atomically: an interrupted extract can never become the cache
+    (tmp / root.name).rename(root)
+    tmp.rmdir()
     return root
 
 
-def fonts_in(text_font) -> set[str]:
-    """Extract font-stack names from a text-font value (plain array or literal expression)."""
-    if not isinstance(text_font, list):
+def fonts_in(value) -> set[str]:
+    """Extract font-stack names from a text-font value (plain list or literal/case/match/step expression)."""
+    if not isinstance(value, list) or not value:
         return set()
-    if all(isinstance(v, str) for v in text_font):
-        return set(text_font)
+    if all(isinstance(v, str) for v in value) and value[0] != "literal":
+        return set(value)
+    op = value[0]
+    if op == "literal" and len(value) == 2:
+        return fonts_in(value[1])
+    if op == "case":  # ["case", cond, out, ..., fallback]: outputs at 2, 4, ...; fallback last
+        return _fonts_union(value[2:-1:2]) | fonts_in(value[-1])
+    if op == "match":  # ["match", input, label, out, ..., fallback]: outputs at 3, 5, ...; fallback last
+        return _fonts_union(value[3:-1:2]) | fonts_in(value[-1])
+    if op == "step":  # ["step", input, out, stop, out, ...]: outputs at 2, 4, ...
+        return _fonts_union(value[2::2])
+    return set()
+
+
+def _fonts_union(values) -> set[str]:
+    """Union of fonts_in over a sequence of expression outputs."""
     stacks: set[str] = set()
-    for i, v in enumerate(text_font):
-        if v == "literal" and i + 1 < len(text_font) and isinstance(text_font[i + 1], list):
-            stacks |= {s for s in text_font[i + 1] if isinstance(s, str)}
+    for v in values:
+        stacks |= fonts_in(v)
+    return stacks
+
+
+def collect_fonts(node) -> set[str]:
+    """Recursively collect font stacks from every text-font occurrence in a style node.
+
+    Covers both layout["text-font"] and the {"text-font": ...} overrides inside
+    text-field format expressions, wherever they nest.
+    """
+    stacks: set[str] = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            stacks |= fonts_in(value) if key == "text-font" else collect_fonts(value)
+    elif isinstance(node, list):
+        for value in node:
+            stacks |= collect_fonts(value)
     return stacks
 
 
@@ -123,9 +172,7 @@ def cmd_assets(region: dict, region_path: Path) -> None:
     if not style_path.exists():
         sys.exit("style not baked yet: run `bake.py style` first (assets are style-driven)")
     assets = fetch_assets()
-    stacks: set[str] = set()
-    for layer in json.loads(style_path.read_text()).get("layers", []):
-        stacks |= fonts_in(layer.get("layout", {}).get("text-font", []))
+    stacks = collect_fonts(json.loads(style_path.read_text()).get("layers", []))
     if not stacks:
         sys.exit("no text-font references in the style; refusing to bake a label-less package")
     for stack in sorted(stacks):
@@ -149,9 +196,12 @@ def cmd_manifest(region: dict, region_path: Path) -> None:
     """Write the package manifest (schema, package_version, checksums) + its committed copy."""
     dest = out_dir(region)
     files = []
-    for f in sorted(p for p in dest.rglob("*") if p.is_file() and p.name != "manifest.json"):
+    for f in sorted(p for p in dest.rglob("*") if p.is_file()):
+        rel = f.relative_to(dest).as_posix()
+        if rel == "manifest.json":  # only the package-root manifest is excluded, never nested files
+            continue
         files.append({
-            "path": f.relative_to(dest).as_posix(),
+            "path": rel,
             "bytes": f.stat().st_size,
             "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
         })
@@ -166,6 +216,7 @@ def cmd_manifest(region: dict, region_path: Path) -> None:
         "flavor": region["flavor"],
         "lang": region["lang"],
         "planet": region["planet"],
+        "assets_sha": ASSETS_SHA,
         "tiles": "region.pmtiles",
         "style": f"style.{region['flavor']}.json",
         "graph": None,
@@ -183,18 +234,19 @@ def cmd_manifest(region: dict, region_path: Path) -> None:
 def main() -> None:
     """CLI entry."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["check", "tiles", "style", "assets", "manifest", "all"])
+    parser.add_argument("command", choices=["check", "clean", "tiles", "style", "assets", "manifest", "all"])
     parser.add_argument("--region", type=Path, default=BAKER_DIR / "regions" / "ma-ling.region.json")
     args = parser.parse_args()
     region = load_region(args.region)
     commands = {
         "check": [cmd_check],
+        "clean": [cmd_clean],
         "tiles": [cmd_tiles],
         "style": [cmd_style],
         "assets": [cmd_assets],
         "manifest": [cmd_manifest],
-        # one pass under one package_version; assets are style-driven, so style bakes first
-        "all": [cmd_tiles, cmd_style, cmd_assets, cmd_manifest],
+        # one clean pass under one package_version; assets are style-driven, so style bakes first
+        "all": [cmd_check, cmd_clean, cmd_tiles, cmd_style, cmd_assets, cmd_manifest],
     }
     for cmd in commands[args.command]:
         cmd(region, args.region)
