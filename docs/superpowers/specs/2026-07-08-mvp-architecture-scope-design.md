@@ -1,7 +1,7 @@
 # MVP architecture and scope design (the skeleton spec)
 
 Date: 2026-07-08
-Status: draft for review
+Status: approved (2026-07-08); shipped with slice-0 on PR #4
 Scope: this is the *skeleton* spec. It fixes the platform and stack, draws module
 boundaries across the MVP subsystems, defines the shared data model and transport, and
 sets build order. It does NOT design any subsystem's internals. Each subsystem gets its
