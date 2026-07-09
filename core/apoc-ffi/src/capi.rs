@@ -1,14 +1,21 @@
 //! The 100 Hz sensor lane: a direct C ABI over the `dto` wiring (the second lane of
 //! spec section 4.1, bypassing Dart). All `unsafe` in the crate is confined to this
-//! module. Every export is panic-guarded: a panic must never unwind across `extern "C"`.
+//! module. Every export is panic-guarded as a backstop; the guard assumes the crate
+//! is built with `panic = "unwind"` (the default). Do not set `panic = "abort"` on a
+//! profile that ships this crate without revisiting the guard: under abort a caught
+//! panic becomes a process abort. Known panic triggers are rejected as invalid
+//! arguments in `dto` before they can reach the core.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use crate::dto::{self, TrustedFixParamsDto};
+use apoc_positioning::gnss_gate::TrustedFixParams;
+
+use crate::dto;
 
 /// Call succeeded; the caller owns the out-buffer until the matching free.
 pub const APOC_OK: i32 = 0;
-/// Null pointer, empty required input, or inconsistent lengths. Out-buffer is zeroed.
+/// Null pointer, empty required input, inconsistent lengths, non-finite or
+/// non-monotonic data, or degenerate params. Out-buffer is zeroed.
 pub const APOC_ERR_INVALID_ARGS: i32 = 1;
 /// A panic was caught at the boundary. Out-buffer is zeroed.
 pub const APOC_ERR_PANIC: i32 = 2;
@@ -31,8 +38,8 @@ pub struct ApocU8Buffer {
     pub len: usize,
 }
 
-/// Flat `#[repr(C)]` mirror of [`TrustedFixParamsDto`]: `use_innovation` is 0/1,
-/// `acc_backstop_m` NaN means no backstop.
+/// Flat `#[repr(C)]` mirror of the core [`TrustedFixParams`]: `use_innovation` is 0/1,
+/// `acc_backstop_m` NaN means no backstop (an `Option` cannot cross the C ABI).
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct ApocTrustedFixParams {
@@ -48,15 +55,15 @@ pub struct ApocTrustedFixParams {
     pub min_fixes: usize,
 }
 
-impl From<TrustedFixParamsDto> for ApocTrustedFixParams {
-    fn from(p: TrustedFixParamsDto) -> Self {
+impl From<&TrustedFixParams> for ApocTrustedFixParams {
+    fn from(p: &TrustedFixParams) -> Self {
         Self {
             max_speed_mps: p.max_speed_mps,
             lock_window: p.lock_window,
             lock_disp_m: p.lock_disp_m,
             max_gap_s: p.max_gap_s,
             max_cold_s: p.max_cold_s,
-            acc_backstop_m: p.acc_backstop_m,
+            acc_backstop_m: p.acc_backstop_m.unwrap_or(f64::NAN),
             use_innovation: u8::from(p.use_innovation),
             innovation_sigma: p.innovation_sigma,
             innovation_floor_m: p.innovation_floor_m,
@@ -65,7 +72,7 @@ impl From<TrustedFixParamsDto> for ApocTrustedFixParams {
     }
 }
 
-impl From<ApocTrustedFixParams> for TrustedFixParamsDto {
+impl From<ApocTrustedFixParams> for TrustedFixParams {
     fn from(p: ApocTrustedFixParams) -> Self {
         Self {
             max_speed_mps: p.max_speed_mps,
@@ -73,7 +80,7 @@ impl From<ApocTrustedFixParams> for TrustedFixParamsDto {
             lock_disp_m: p.lock_disp_m,
             max_gap_s: p.max_gap_s,
             max_cold_s: p.max_cold_s,
-            acc_backstop_m: p.acc_backstop_m,
+            acc_backstop_m: (!p.acc_backstop_m.is_nan()).then_some(p.acc_backstop_m),
             use_innovation: p.use_innovation != 0,
             innovation_sigma: p.innovation_sigma,
             innovation_floor_m: p.innovation_floor_m,
@@ -82,33 +89,26 @@ impl From<ApocTrustedFixParams> for TrustedFixParamsDto {
     }
 }
 
-fn f64_buffer(v: Vec<f64>) -> ApocF64Buffer {
+/// Hand a Vec to C as `(ptr, len)`. `into_boxed_slice` guarantees `len == cap`,
+/// so [`free_raw_parts`] can reconstruct the exact `Box<[T]>`. Null iff empty.
+fn into_raw_parts<T>(v: Vec<T>) -> (*mut T, usize) {
     let boxed = v.into_boxed_slice();
     let len = boxed.len();
     if len == 0 {
-        return ApocF64Buffer {
-            ptr: std::ptr::null_mut(),
-            len: 0,
-        };
+        return (std::ptr::null_mut(), 0);
     }
-    ApocF64Buffer {
-        ptr: Box::into_raw(boxed) as *mut f64,
-        len,
-    }
+    (Box::into_raw(boxed) as *mut T, len)
 }
 
-fn u8_buffer(v: Vec<u8>) -> ApocU8Buffer {
-    let boxed = v.into_boxed_slice();
-    let len = boxed.len();
-    if len == 0 {
-        return ApocU8Buffer {
-            ptr: std::ptr::null_mut(),
-            len: 0,
-        };
-    }
-    ApocU8Buffer {
-        ptr: Box::into_raw(boxed) as *mut u8,
-        len,
+/// Release a `(ptr, len)` pair produced by [`into_raw_parts`]. Null is a no-op.
+///
+/// # Safety
+/// A non-null `(ptr, len)` must be exactly a pair produced by `into_raw_parts`,
+/// unmodified and not yet freed.
+unsafe fn free_raw_parts<T>(ptr: *mut T, len: usize) {
+    if !ptr.is_null() {
+        // SAFETY: per the fn contract this reconstructs the original Box<[T]>.
+        unsafe { drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len))) };
     }
 }
 
@@ -135,14 +135,15 @@ unsafe fn slice_or_empty<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
 
 /// Interpolate an NE track onto query times over the C ABI.
 ///
-/// `t_src`: `t_src_len` times, strictly increasing (caller contract). `ne_src`:
-/// `2 * t_src_len` row-major NE values. `t_query`: `t_query_len` times. On `APOC_OK`,
+/// `t_src`: `t_src_len` strictly increasing finite times. `ne_src`: `2 * t_src_len`
+/// row-major finite NE values. `t_query`: `t_query_len` finite times. On `APOC_OK`,
 /// `*out` owns `2 * t_query_len` row-major NE values; release with
-/// [`apoc_f64_buffer_free`]. On any error `*out` is zeroed and there is nothing to free.
+/// [`apoc_f64_buffer_free`]. On any error `*out` is zeroed and there is nothing to
+/// free. Non-finite or non-monotonic data returns `APOC_ERR_INVALID_ARGS`.
 ///
 /// # Safety
 /// Every non-null data pointer must be valid for the stated number of reads. `out`
-/// must be non-null and valid for a write.
+/// must be non-null, valid for a write, and must not overlap any input buffer.
 #[no_mangle]
 pub unsafe extern "C" fn apoc_interp_ne(
     t_src: *const f64,
@@ -181,8 +182,9 @@ pub unsafe extern "C" fn apoc_interp_ne(
     };
     match guarded(|| dto::interp_ne_view(t_src_s, ne_src_s, t_query_s)) {
         Ok(view) => {
+            let (ptr, len) = into_raw_parts(view.ne);
             // SAFETY: out is non-null and valid for a write per the fn contract.
-            unsafe { out.write(f64_buffer(view.ne)) };
+            unsafe { out.write(ApocF64Buffer { ptr, len }) };
             APOC_OK
         }
         Err(code) => code,
@@ -200,15 +202,11 @@ pub unsafe extern "C" fn apoc_f64_buffer_free(buf: *mut ApocF64Buffer) {
     if buf.is_null() {
         return;
     }
-    // SAFETY: buf is valid for read/write per the fn contract; a non-null (ptr, len)
-    // came unmodified from f64_buffer, so it reconstructs the original Box<[f64]>.
+    // SAFETY: buf is valid for read/write and holds a library-produced pair per the
+    // fn contract, which is exactly free_raw_parts' contract.
     unsafe {
         let b = buf.read();
-        if !b.ptr.is_null() {
-            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                b.ptr, b.len,
-            )));
-        }
+        free_raw_parts(b.ptr, b.len);
         buf.write(ApocF64Buffer {
             ptr: std::ptr::null_mut(),
             len: 0,
@@ -218,16 +216,19 @@ pub unsafe extern "C" fn apoc_f64_buffer_free(buf: *mut ApocF64Buffer) {
 
 /// Trusted-fix keep-mask over the C ABI (the L0 gate).
 ///
-/// `gnss_t`: `gnss_len` times. `gnss_ne`: `2 * gnss_len` row-major NE values.
-/// `reported_acc_m`: null for absent, else `gnss_len` values. The PDR pair is absent
-/// when `pdr_t` and `pdr_ne` are null and `pdr_len == 0`; when present, `pdr_t` holds
-/// `pdr_len > 0` times and `pdr_ne` holds `2 * pdr_len` values. `params`: null for the
-/// core defaults. On `APOC_OK`, `*out` owns `gnss_len` mask bytes (0/1); release with
-/// [`apoc_u8_buffer_free`]. On any error `*out` is zeroed and there is nothing to free.
+/// `gnss_t`: `gnss_len` finite times. `gnss_ne`: `2 * gnss_len` row-major finite NE
+/// values. `reported_acc_m`: null for absent, else `gnss_len` values. The PDR pair is
+/// absent when `pdr_t` and `pdr_ne` are null and `pdr_len == 0`; when present, `pdr_t`
+/// holds `pdr_len > 0` strictly increasing finite times and `pdr_ne` holds
+/// `2 * pdr_len` finite values. `params`: null for the core defaults; `lock_window`
+/// must be at least 1. On `APOC_OK`, `*out` owns `gnss_len` mask bytes (0/1); release
+/// with [`apoc_u8_buffer_free`]. On any error `*out` is zeroed and there is nothing
+/// to free. Non-finite data and degenerate params return `APOC_ERR_INVALID_ARGS`.
 ///
 /// # Safety
 /// Every non-null pointer must be valid for the stated number of reads (`params` for
-/// one read). `out` must be non-null and valid for a write.
+/// one read). `out` must be non-null, valid for a write, and must not overlap any
+/// input buffer.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)] // a flat C edge is flat by design
 pub unsafe extern "C" fn apoc_trusted_fix_mask(
@@ -283,18 +284,20 @@ pub unsafe extern "C" fn apoc_trusted_fix_mask(
     let Some((gnss_t_s, gnss_ne_s, acc_s, pdr_t_s, pdr_ne_s)) = parts else {
         return APOC_ERR_INVALID_ARGS;
     };
-    let dto_params = if params.is_null() {
-        TrustedFixParamsDto::default()
+    let core_params = if params.is_null() {
+        TrustedFixParams::default()
     } else {
         // SAFETY: params is non-null and valid for one read per the fn contract.
-        TrustedFixParamsDto::from(unsafe { params.read() })
+        TrustedFixParams::from(unsafe { params.read() })
     };
-    match guarded(|| dto::trusted_fix_view(gnss_t_s, gnss_ne_s, acc_s, pdr_t_s, pdr_ne_s, &dto_params))
-    {
+    match guarded(|| {
+        dto::trusted_fix_view(gnss_t_s, gnss_ne_s, acc_s, pdr_t_s, pdr_ne_s, &core_params)
+    }) {
         Ok(view) => {
             let mask: Vec<u8> = view.keep.iter().map(|&b| u8::from(b)).collect();
+            let (ptr, len) = into_raw_parts(mask);
             // SAFETY: out is non-null and valid for a write per the fn contract.
-            unsafe { out.write(u8_buffer(mask)) };
+            unsafe { out.write(ApocU8Buffer { ptr, len }) };
             APOC_OK
         }
         Err(code) => code,
@@ -312,15 +315,11 @@ pub unsafe extern "C" fn apoc_u8_buffer_free(buf: *mut ApocU8Buffer) {
     if buf.is_null() {
         return;
     }
-    // SAFETY: buf is valid for read/write per the fn contract; a non-null (ptr, len)
-    // came unmodified from u8_buffer, so it reconstructs the original Box<[u8]>.
+    // SAFETY: buf is valid for read/write and holds a library-produced pair per the
+    // fn contract, which is exactly free_raw_parts' contract.
     unsafe {
         let b = buf.read();
-        if !b.ptr.is_null() {
-            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                b.ptr, b.len,
-            )));
-        }
+        free_raw_parts(b.ptr, b.len);
         buf.write(ApocU8Buffer {
             ptr: std::ptr::null_mut(),
             len: 0,
