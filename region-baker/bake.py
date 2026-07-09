@@ -145,10 +145,45 @@ def cmd_assets(region: dict, region_path: Path) -> None:
     print(f"sprites: {copied} files (sprite.{flavor}*)")
 
 
+def cmd_manifest(region: dict, region_path: Path) -> None:
+    """Write the package manifest (schema, package_version, checksums) + its committed copy."""
+    dest = out_dir(region)
+    files = []
+    for f in sorted(p for p in dest.rglob("*") if p.is_file() and p.name != "manifest.json"):
+        files.append({
+            "path": f.relative_to(dest).as_posix(),
+            "bytes": f.stat().st_size,
+            "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
+        })
+    manifest = {
+        "schema": MANIFEST_SCHEMA,
+        "package_version": region["package_version"],
+        "id": region["id"],
+        "version": region["version"],
+        "name": region.get("name"),
+        "bbox": region["bbox"],
+        "maxzoom": region["maxzoom"],
+        "flavor": region["flavor"],
+        "lang": region["lang"],
+        "planet": region["planet"],
+        "tiles": "region.pmtiles",
+        "style": f"style.{region['flavor']}.json",
+        "graph": None,
+        "graph_crs": region.get("graph_crs"),
+        "files": files,
+    }
+    text = json.dumps(manifest, indent=2) + "\n"
+    (dest / "manifest.json").write_text(text)
+    committed = BAKER_DIR / "manifests" / f"{region['id']}-{region['version']}.manifest.json"
+    committed.parent.mkdir(exist_ok=True)
+    committed.write_text(text)
+    print(f"wrote {dest / 'manifest.json'} and {committed} ({len(files)} files)")
+
+
 def main() -> None:
     """CLI entry."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["check", "tiles", "style", "assets"])
+    parser.add_argument("command", choices=["check", "tiles", "style", "assets", "manifest", "all"])
     parser.add_argument("--region", type=Path, default=BAKER_DIR / "regions" / "ma-ling.region.json")
     args = parser.parse_args()
     region = load_region(args.region)
@@ -157,6 +192,9 @@ def main() -> None:
         "tiles": [cmd_tiles],
         "style": [cmd_style],
         "assets": [cmd_assets],
+        "manifest": [cmd_manifest],
+        # one pass under one package_version; assets are style-driven, so style bakes first
+        "all": [cmd_tiles, cmd_style, cmd_assets, cmd_manifest],
     }
     for cmd in commands[args.command]:
         cmd(region, args.region)
