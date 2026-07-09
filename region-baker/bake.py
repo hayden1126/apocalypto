@@ -80,14 +80,84 @@ def cmd_tiles(region: dict, region_path: Path) -> None:
     print(f"wrote {tiles} ({tiles.stat().st_size} bytes)")
 
 
+def cmd_style(region: dict, region_path: Path) -> None:
+    """Generate the offline MapLibre style from the pinned basemaps flavor."""
+    dest = out_dir(region)
+    dest.mkdir(parents=True, exist_ok=True)
+    style = dest / f"style.{region['flavor']}.json"
+    run(["node", str(BAKER_DIR / "gen_style.mjs"), str(region_path), str(style)])
+
+
+def fetch_assets() -> Path:
+    """Download (once, cached) and unpack the basemaps-assets tree; return its root."""
+    cache = BAKER_DIR / "cache"
+    root = cache / "basemaps-assets-main"
+    if root.exists():
+        return root
+    cache.mkdir(exist_ok=True)
+    print(f"+ fetch {ASSETS_URL}")
+    with urllib.request.urlopen(ASSETS_URL) as resp:
+        data = resp.read()
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        tar.extractall(cache, filter="data")
+    return root
+
+
+def fonts_in(text_font) -> set[str]:
+    """Extract font-stack names from a text-font value (plain array or literal expression)."""
+    if not isinstance(text_font, list):
+        return set()
+    if all(isinstance(v, str) for v in text_font):
+        return set(text_font)
+    stacks: set[str] = set()
+    for i, v in enumerate(text_font):
+        if v == "literal" and i + 1 < len(text_font) and isinstance(text_font[i + 1], list):
+            stacks |= {s for s in text_font[i + 1] if isinstance(s, str)}
+    return stacks
+
+
+def cmd_assets(region: dict, region_path: Path) -> None:
+    """Copy the style-referenced glyph stacks and the flavor sprites into the package."""
+    dest = out_dir(region)
+    style_path = dest / f"style.{region['flavor']}.json"
+    if not style_path.exists():
+        sys.exit("style not baked yet: run `bake.py style` first (assets are style-driven)")
+    assets = fetch_assets()
+    stacks: set[str] = set()
+    for layer in json.loads(style_path.read_text()).get("layers", []):
+        stacks |= fonts_in(layer.get("layout", {}).get("text-font", []))
+    if not stacks:
+        sys.exit("no text-font references in the style; refusing to bake a label-less package")
+    for stack in sorted(stacks):
+        src = assets / "fonts" / stack
+        if not src.is_dir():
+            sys.exit(f"font stack {stack!r} referenced by the style is missing from basemaps-assets")
+        shutil.copytree(src, dest / "glyphs" / stack, dirs_exist_ok=True)
+        print(f"glyphs: {stack} ({len(list((dest / 'glyphs' / stack).iterdir()))} ranges)")
+    flavor = region["flavor"]
+    copied = 0
+    for f in sorted((assets / "sprites" / "v4").iterdir()):
+        if f.name.split(".")[0] in (flavor, f"{flavor}@2x"):
+            shutil.copy2(f, dest / f"sprite.{f.name}")
+            copied += 1
+    if copied != 4:
+        sys.exit(f"expected 4 sprite files for flavor {flavor!r}, copied {copied}")
+    print(f"sprites: {copied} files (sprite.{flavor}*)")
+
+
 def main() -> None:
     """CLI entry."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["check", "tiles"])
+    parser.add_argument("command", choices=["check", "tiles", "style", "assets"])
     parser.add_argument("--region", type=Path, default=BAKER_DIR / "regions" / "ma-ling.region.json")
     args = parser.parse_args()
     region = load_region(args.region)
-    commands = {"check": [cmd_check], "tiles": [cmd_tiles]}
+    commands = {
+        "check": [cmd_check],
+        "tiles": [cmd_tiles],
+        "style": [cmd_style],
+        "assets": [cmd_assets],
+    }
     for cmd in commands[args.command]:
         cmd(region, args.region)
 
