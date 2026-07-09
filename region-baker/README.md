@@ -14,8 +14,12 @@ manifest carrying the `package_version` both readers must assert.
 ## Bake and verify
 
     python3 bake.py check          # toolchain present and pinned
-    python3 bake.py all            # tiles -> style -> assets -> manifest, one pass
+    python3 bake.py all            # check -> clean -> tiles -> style -> assets -> manifest, one clean pass
     python3 verify_package.py out/ma-ling/1
+
+Subcommands also run standalone: `check | clean | tiles | style | assets | manifest`
+(`clean` deletes the package dir so stale files cannot enter the manifest; the
+standalone subcommands are incremental and do NOT clean first).
 
 Network is used only at bake time. The package and the verifier are offline.
 Binaries under `out/` are gitignored; the manifest copy under `manifests/` is
