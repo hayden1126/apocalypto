@@ -68,14 +68,26 @@ def cmd_check(region: dict, region_path: Path) -> None:
     print(f"PASS @protomaps/basemaps {installed} (pinned {pinned})")
 
 
+def cmd_tiles(region: dict, region_path: Path) -> None:
+    """Range-extract the region bbox from the pinned planet build and verify the archive."""
+    dest = out_dir(region)
+    dest.mkdir(parents=True, exist_ok=True)
+    tiles = dest / "region.pmtiles"
+    bbox = ",".join(str(v) for v in region["bbox"])
+    run([pmtiles_bin(), "extract", region["planet"], str(tiles),
+         f"--bbox={bbox}", f"--maxzoom={region['maxzoom']}"])
+    run([pmtiles_bin(), "verify", str(tiles)])
+    print(f"wrote {tiles} ({tiles.stat().st_size} bytes)")
+
+
 def main() -> None:
     """CLI entry."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["check"])
+    parser.add_argument("command", choices=["check", "tiles"])
     parser.add_argument("--region", type=Path, default=BAKER_DIR / "regions" / "ma-ling.region.json")
     args = parser.parse_args()
     region = load_region(args.region)
-    commands = {"check": [cmd_check]}
+    commands = {"check": [cmd_check], "tiles": [cmd_tiles]}
     for cmd in commands[args.command]:
         cmd(region, args.region)
 
