@@ -15,7 +15,7 @@ class ImuSession:
     """
     name: str
     accel_t: np.ndarray    # (Na,)  s
-    accel: np.ndarray      # (Na, 3) m/s^2, device frame (z up when held flat)
+    accel: np.ndarray      # (Na, 3) m/s^2 specific force; rest-gravity sign is loader-specific (GEOLOC +z up, phone normalized to the iOS export frame)
     gyro_t: np.ndarray     # (Ng,)  s
     gyro: np.ndarray       # (Ng, 3) rad/s
     mag_t: np.ndarray      # (Nm,)  s
