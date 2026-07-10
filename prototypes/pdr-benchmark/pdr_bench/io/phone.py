@@ -2,10 +2,24 @@
 
 Export layout: one CSV per sensor (Accelerometer, Gravity, Gyroscope, Magnetometer,
 Location), each with `time` (Unix epoch nanoseconds) on one shared device clock.
-Two differences from GEOLOC drive this adapter:
+
+iOS and Android exports disagree on sign convention: Sensor Logger's Accelerometer and
+Gravity read with opposite signs on all three axes between the two platforms (gravity is
+-z when held flat on iOS, +z on Android), while the Gyroscope shares one convention and
+Orientation is never read here. This adapter normalizes every export into the iOS
+convention, the frame both validated walks and all regression baselines were recorded in,
+detecting the platform from Metadata.csv (`platform`, plus the "Standardise Units & Frames"
+toggle via `standardisation`) or, for older exports without it, from the Android-only
+TotalAcceleration.csv marker. Normalizing in code rather than trusting the in-app toggle is
+load-bearing: a missed frame flip does not crash, it silently shifts the drift and re-anchor
+metrics by roughly 10 to 20 percent (measured by running the iPhone walk through the
+pipeline with globally negated acceleration).
+
+Two further differences from GEOLOC drive this adapter:
   - Sensor Logger's Accelerometer stream excludes gravity, so raw specific force is
-    reconstructed as Accelerometer + Gravity (the harness needs the ~+9.81 up-axis
-    signal for Madgwick's tilt reference and the Weinberg amplitude).
+    reconstructed as Accelerometer + Gravity (the harness needs the gravity-direction
+    signal for Madgwick's tilt reference and the Weinberg amplitude). When present,
+    TotalAcceleration (Android raw accel including gravity) cross-checks that reconstruction.
   - The phone GPS track is the only absolute source, so it serves as gt_ne; there is
     no foot-mounted per-stride ground truth (stride arrays are empty).
 `time` is ~1.7e18 ns, past float64's exact-integer range, so timestamps are rebased
@@ -28,6 +42,44 @@ def _read_xyz(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return df["time"].to_numpy(np.int64), df[["x", "y", "z"]].to_numpy(float)
 
 
+def _detect_frame(export_dir: Path) -> dict:
+    """Detect a Sensor Logger export's sensor-frame convention.
+
+    iOS and Android disagree on the sign of Accelerometer and Gravity (all three axes);
+    this picks the convention so `load_phone` can normalize Android exports into the iOS
+    frame. Precedence: Metadata.csv `platform` (with the "Standardise Units & Frames"
+    toggle read from `standardisation`, which makes an iOS export use the Android
+    convention), then the Android-only TotalAcceleration.csv as a fallback marker for
+    older exports without Metadata. Returns `platform`, `standardisation`, `frame`, and
+    whether the raw streams must be sign-flipped (`frame_flipped`). Raises on an unknown
+    platform value.
+    """
+    platform = None
+    standardisation = None
+    meta_path = export_dir / "Metadata.csv"
+    if meta_path.exists() and meta_path.stat().st_size > 0:
+        md = pd.read_csv(meta_path)
+        if len(md) and "platform" in md.columns:
+            platform = str(md["platform"].iloc[0]).strip().lower()
+            if platform not in ("ios", "android"):
+                raise ValueError(
+                    f"Metadata.csv platform {platform!r} is not 'ios' or 'android'")
+        if len(md) and "standardisation" in md.columns:
+            standardisation = (str(md["standardisation"].iloc[0]).strip().lower()
+                               in ("true", "1", "yes"))
+
+    if platform is not None:
+        android_frame = (platform == "android") or bool(standardisation)
+    else:
+        # no usable Metadata: fall back to the Android-only TotalAcceleration.csv marker
+        android_frame = (export_dir / "TotalAcceleration.csv").exists()
+        platform = "android" if android_frame else "ios"
+
+    return {"platform": platform, "standardisation": standardisation,
+            "frame": "android" if android_frame else "ios",
+            "frame_flipped": android_frame}
+
+
 def load_phone(export_dir: str | Path,
     name: str = "phone",
 ) -> ImuSession:
@@ -40,10 +92,32 @@ def load_phone(export_dir: str | Path,
     loc = pd.read_csv(d / "Location.csv")
     loc_tn = loc["time"].to_numpy(np.int64)
 
+    frame = _detect_frame(d)
+
     # rebase all streams to a common origin in integer ns, then convert to seconds
     t0 = min(a_tn[0], grav_tn[0], g_tn[0], m_tn[0], loc_tn[0])
     a_t, grav_t, g_t, m_t, gt_t = ((tn - t0) * 1e-9
                                    for tn in (a_tn, grav_tn, g_tn, m_tn, loc_tn))
+
+    # cross-check the reconstruction against TotalAcceleration when Sensor Logger logs it
+    # (Android exports only), in the raw export frame before any normalization
+    total_path = d / "TotalAcceleration.csv"
+    if total_path.exists() and total_path.stat().st_size > 0:
+        tot_tn, total = _read_xyz(total_path)
+        tot_t = (tot_tn - t0) * 1e-9
+        recon_raw = accel_lin + resample(grav_t, grav, a_t)
+        resid = float(np.median(np.linalg.norm(
+            recon_raw - resample(tot_t, total, a_t), axis=1)))
+        if resid > 0.5:
+            raise ValueError(
+                f"TotalAcceleration disagrees with Accelerometer + Gravity by "
+                f"{resid:.2f} m/s^2 (median); export semantics or frame convention is off")
+
+    # normalize an Android-frame export into the iOS convention: Accelerometer and Gravity
+    # are sign-flipped on all three axes (the Gyroscope shares one convention, left as-is)
+    if frame["frame_flipped"]:
+        accel_lin = -accel_lin
+        grav = -grav
 
     # reconstruct raw specific force: Sensor Logger's Accelerometer excludes gravity
     accel = accel_lin + resample(grav_t, grav, a_t)
@@ -73,6 +147,11 @@ def load_phone(export_dir: str | Path,
               "rebase_t0_ns": int(t0),
               "gps_horizontal_acc_m": loc["horizontalAccuracy"].to_numpy(float),
               "accel_median_norm_m_s2": norm,
+              "platform": frame["platform"],
+              "frame": frame["frame"],
+              "frame_flipped": frame["frame_flipped"],
+              "standardisation": frame["standardisation"],
+              "imu_rate_hz": float(1.0 / np.median(np.diff(a_t))),
               "export_dir": str(d)},
     )
 

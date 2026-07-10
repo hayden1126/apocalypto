@@ -40,6 +40,8 @@ def process_phone(export_dir: str,
     out = {"name": name, "gt_path_length_m": round(s.gt_path_length, 1),
            "n_steps": r.n_steps, "weinberg_k": round(r.k, 4),
            "k_source": "fixed" if k is not None else "gps_calibrated",
+           "platform": s.meta["platform"],
+           "imu_rate_hz": round(float(s.meta["imu_rate_hz"]), 1),
            "gps_median_acc_m": round(float(np.median(s.meta["gps_horizontal_acc_m"])), 1),
            "pdr_vs_gps": r.metrics}
 

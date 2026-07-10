@@ -38,6 +38,34 @@ Sensor Logger by Kelvin Choi (cross-platform, free, one device clock, zipped per
   accuracy, course, and speed. Log raw GNSS / NMEA too if the device exposes it.
 - Disable auto-pause / sleep.
 
+### Android device setup (Huawei P30 / EMUI 12, for the cross-device validation)
+
+EMUI aggressively kills backgrounded apps, and its power saver drops GPS on screen-lock, so
+a 30-60 min walk needs both of these:
+- **Keep the logger foregrounded (developer-endorsed reliable mode):** in Sensor Logger turn
+  on Keep Awake (screen stays on; dim is fine) and Proximity Lock (the screen blanks in a
+  pocket but the app keeps behaving as foreground). This alone sidesteps EMUI's task killer.
+- **Belt and braces:** Settings > Battery > App launch > Sensor Logger > Manage manually, and
+  enable all three of Auto-launch, Secondary launch, and Run in background; add Sensor Logger
+  to "Ignore battery optimizations"; turn Power Saving OFF; charge the (6-year-old) battery.
+- **Enable TotalAcceleration** in the sensor list. The loader cross-checks Accelerometer +
+  Gravity against it and rejects an export whose semantics disagree.
+- **Leave "Standardise Units & Frames" OFF** (the default). iOS and Android disagree on the
+  Accelerometer/Gravity sign; the loader auto-detects the platform (from Metadata.csv, or the
+  Android-only TotalAcceleration.csv marker) and normalizes Android into the iOS frame in
+  code. It also tolerates a standardised export, but keep exports uniform so comparisons stay
+  clean.
+- **Pulling exports over USB:** enable Developer options > "Allow ADB debugging in charge only
+  mode" (EMUI drops adb on screen-lock otherwise), or just share the zip and skip adb.
+- **GPS warm-up to a full lock still applies.** The P30 has a dual-frequency L1+L5 receiver;
+  Android `horizontalAccuracy` is generally honest (unlike iOS's ~7x-pessimistic report), but
+  the trusted-fix mask never trusts reported accuracy beyond a loose < 50 m backstop, so no
+  code changes either way.
+- **Smoke clip first (mirrors the iPhone's indoor test clips):** record ~60 s static + ~2 min
+  walk and run `run_phone` on it before the real walk. Confirm `platform: android` and
+  `imu_rate_hz` >= 100 in the metrics, median |a| ~ 9.8, a plausible step count, and that the
+  logger survived a screen-off pocket stretch.
+
 ## Per-walk procedure
 
 - **Route:** a closed loop returning to a single physical start/end mark, in a well-mapped
@@ -64,9 +92,12 @@ Sensor Logger by Kelvin Choi (cross-platform, free, one device clock, zipped per
   pose) before the first step, and again >= 60 s after returning. The opening window seeds
   gyro-bias estimation; the opening-vs-closing bias delta measures gyro-bias drift.
 - **Calibration leg:** at the start, pace a tape/wheel-measured straight 60-100 m segment
-  **on flat ground**. Its length sets a fixed Weinberg k (pass via `--k`); do NOT let k calibrate to GPS distance
-  for the headline number (that launders GPS distance into the step model and hides
-  along-track error).
+  **on flat ground, at your NATURAL walking pace**. Its length sets a fixed Weinberg k (pass
+  via `--k`); do NOT let k calibrate to GPS distance for the headline number (that launders
+  GPS distance into the step model and hides along-track error). Do NOT exaggerate stride
+  length on the leg: the 2 km walk's calibration leg was paced with deliberate long strides
+  and over-estimated total distance ~1.8x, because Weinberg assumes stride length scales with
+  the vertical accel bounce, which exaggerated strides break.
 - **Pose, two variants in order:** P1 held flat, screen up, pointing forward, steady (matches
   the step-1 Xsens-flat assumption; the primary comparable case). P2 pocket / swinging hand
   (harder; quantifies pose sensitivity). Keep P1 genuinely rigid: a time-varying
