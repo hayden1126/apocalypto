@@ -1,7 +1,7 @@
 # MVP architecture and scope design (the skeleton spec)
 
 Date: 2026-07-08
-Status: approved (2026-07-08); shipped with slice-0 on PR #4
+Status: approved (2026-07-08); shipped with slice-0 on PR #4; amended 2026-07-10 (Android-first build order, see section 2a)
 Scope: this is the *skeleton* spec. It fixes the platform and stack, draws module
 boundaries across the MVP subsystems, defines the shared data model and transport, and
 sets build order. It does NOT design any subsystem's internals. Each subsystem gets its
@@ -32,18 +32,60 @@ build behind a tight core milestone.
   positioning, trust, and mesh logic, and thin per-platform native capability adapters
   (Kotlin/Swift). Recorded dissent: native Android was the recommendation, because
   cross-platform does not shrink the native radio, sensor, and power work and iOS caps
-  several features. The device reality below makes the cross-platform choice pay off.
+  several features. The device reality below makes the cross-platform choice pay off. The
+  2026-07-10 pivot (section 2a) vindicates the build-order half of this dissent; the
+  cross-platform stack choice stands.
 - **Positioning core language:** the shared Rust core (not framework-native Dart, not a
   per-platform native port), exposed to Flutter via FFI (flutter_rust_bridge).
 - **v1 breadth:** a "core milestone first" cut. The core milestone is slices 0 to 3
   (positioning spine, offline map, trust backbone, BLE hazard mesh). This spec still draws
   boundaries for all subsystems; capture, power, and the LoRa companion are designed-in and
   fast-follow.
-- **Build and test platform: iOS-first.** The developer has only an iPhone, and the 2 km
-  PASS was validated on an iPhone, so building slice 1 on iOS reproduces the validated
-  result on the same sensor platform. This is a build-order decision, not an architecture
-  decision: the native trait boundary is unchanged, and Android becomes the
-  full-radio-capability target when a device is available.
+- **Build and test platform: Android-first (amended 2026-07-10; originally iOS-first, see
+  section 2a).** The developer's daily device is now a Huawei P30 (Android); the 2 km PASS
+  device (iPhone 14 Pro) remains the positioning reference, with iOS built periodically on a
+  2020 Intel MacBook Air. Building slice 1 on Android puts the full-radio target first, and
+  the iPhone re-walk keeps the validated sensor platform in the loop. This remains a
+  build-order decision, not an architecture decision: the native trait boundary is unchanged,
+  and iOS is the capped-subset tier behind the same ports.
+
+## 2a. Amendment (2026-07-10): Android-first build order
+
+Decision, approved by the user: the MVP build order flips from iOS-first to Android-first.
+This amends the build-order decision in section 2 and the touchpoints in sections 3, 9, 12,
+and 14. It changes no architecture: the trait boundary, the crate workspace, the FFI lanes,
+and the "core never assumes Android capabilities" rule are all unchanged.
+
+Why the premise changed. The section 2 decision rested on "the developer has only an
+iPhone". That is no longer true. The developer now has a Huawei P30 (EMUI 12, Android 10,
+Google services present, dual-frequency L1+L5 GNSS, a different IMU vendor than the iPhone
+14 Pro) as a daily Android device, plus a 2020 Intel MacBook Air that can build and sign iOS
+via Xcode 26.3 on macOS Sequoia. The Air is a periodic iOS station, not a primary machine:
+macOS Tahoe dropped every Intel MacBook Air, the App Store minimum-SDK requirement passes
+the machine around April 2027, Flutter has announced Intel-Mac host deprecation, and
+sustained builds thermally throttle. So Android is the daily build-and-test target and iOS
+becomes a periodic verify-and-deploy target at Air sessions.
+
+What changes. Android ships first and is the full-radio-capability tier from the start
+(section 2 already anticipated this: "Android becomes the full-radio-capability target when
+a device is available", and a device is now available). iOS is the capped-subset tier behind
+identical traits, built and verified periodically on the Air, viable to about April 2027.
+Slice 1 on-device validation names two walks: a P30 walk on the ma-ling routes first, then
+an iPhone 14 Pro re-walk built via the Air. The iPhone 14 Pro remains the validated
+positioning reference device. The Mac-mini-versus-cloud-CI question from STATUS is closed
+for now: the Air covers periodic iOS verification, revisit when iOS work becomes sustained
+or the Air ages out.
+
+The recorded dissent in section 2 (native Android was the recommendation) is vindicated on
+the build-order half: Android-first was the right first target. The cross-platform stack
+half of that decision stands, and now pays off in the other direction: the iOS tier stays
+reachable from the same codebase at periodic Air sessions instead of needing a parallel
+native build.
+
+Cross-device positioning risk is being retired ahead of slice 1. The P30 is validated
+through the existing Python pipeline (`prototypes/pdr-benchmark/`, `PHONE_WALK_PROTOCOL.md`)
+on the same ma-ling routes, so sensor semantics and frame conventions are proven before any
+Rust port runs on the device.
 
 ## 3. Architecture: three tiers
 
@@ -55,9 +97,10 @@ build behind a tight core milestone.
    (MapLibre GL Native, via `maplibre_gl`). It talks to Rust only through one generated FFI
    boundary and never parses wire bytes.
 3. **Native capability adapters (Kotlin/Swift).** Thin, decision-free translators that
-   implement Rust-defined traits for sensors, GNSS, BLE, LoRa, camera, and power. iOS ships
-   first (the dev device); Android is the full-capability tier behind the identical traits;
-   iOS impls are a capped subset of the same ports.
+   implement Rust-defined traits for sensors, GNSS, BLE, LoRa, camera, and power. Android
+   ships first (the dev device) and is the full-capability tier behind these traits; iOS
+   impls are a capped subset of the same ports, verified periodically on the Intel MacBook
+   Air (amended 2026-07-10, section 2a).
 
 Two orthogonal layerings discipline the design and must not be conflated:
 
@@ -223,10 +266,11 @@ explicitly, and only the pixels are walled, the tiny pointer still crosses the m
 
 Each implements an `apoc-ffi` port and makes zero decisions: `SensorSource` (accel, gyro,
 gravity, plus fused orientation), `GnssSource`, `RadioLink` (BLE, LoRa), `CameraSource`,
-`PowerControl`. iOS ships first as the dev device; Android is the full-capability tier; the
-per-platform caps (iOS: `CLLocation`-only GNSS, no BLE extended-advertising mesh, weaker
-power control, the iOS-to-Android bulk wall) are the degraded impls behind identical traits.
-The core must never assume Android capabilities.
+`PowerControl`. Android ships first as the dev device and the full-capability tier; the iOS
+caps (`CLLocation`-only GNSS, no BLE extended-advertising mesh, weaker power control, the
+iOS-to-Android bulk wall) are the degraded impls behind identical traits, exercised at
+periodic Air sessions (amended 2026-07-10, section 2a). The core must never assume Android
+capabilities.
 
 ## 10. Build-time region-package pipeline (off-phone)
 
@@ -245,7 +289,7 @@ cone overlay, hazard layer, F3 blink/slider review, companion pairing, power HUD
 `map_renderer` (MapLibre GL Native rendering the region package's offline vector tiles, with
 cone/route/hazards/captures as overlay layers), and `bridge` (generated frb bindings).
 
-## 12. Build order (thin vertical slices, iOS-first)
+## 12. Build order (thin vertical slices, Android-first; amended 2026-07-10)
 
 Ordering is justified by dependency (types and geo, then positioning, then belief, then
 hazards need belief, then capture needs trust and mesh, then power duty-cycles the rest) and
@@ -256,29 +300,33 @@ by retiring the make-or-break port and spine on the real platform before anythin
   harness (run the Python prototype on `ma_ling_2km` and `ma_ling_walk`, dump intermediate
   and final arrays, assert the Rust port matches within tolerance), and a Flutter app
   rendering a dark vector map. De-risks the toolchain and the data contract before any logic.
-- **Slice 1, the proven positioning spine end-to-end on iOS (the first real slice).** Port
+- **Slice 1, the proven positioning spine end-to-end on Android (the first real slice).** Port
   `pdr`, `gnss_gate`, `reanchor` (GNSS-primary), the native Viterbi `mapmatch`,
   `fusion::SpineUnInverted`, and `belief` into `apoc-positioning`; wire `apoc-map` and
-  `apoc-routing`; expose the belief stream via `apoc-ffi`; feed it from iOS CoreMotion and
-  CLLocation adapters; render the moving cone. Validate against the oracle and an iPhone
-  re-walk. Retires port correctness and the real target platform at once, on the platform the
-  PASS was validated on.
+  `apoc-routing`; expose the belief stream via `apoc-ffi`; feed it from Android sensor and
+  location adapters (the mag-free heading path per risk 2: `GAME_ROTATION_VECTOR` or raw
+  gyro); render the moving cone. Validate against the oracle, a P30 walk on the ma-ling
+  routes, and a later iPhone 14 Pro re-walk built via the Air. Retires port correctness and
+  the primary target platform at once; the iPhone re-walk keeps continuity with the platform
+  the PASS was validated on.
 - **Slice 2, the data backbone.** Complete `apoc-types` (final layout, codec) and
   `apoc-trust` (verify, TTL, corroboration, CRDT merge, store), exercised over an in-process
   fake transport with no radios. The record layout is frozen here, so the risk-1 byte-budget
   check must land first.
 - **Slice 3, the BLE hazard vertical.** `apoc-mesh` plus a native BLE adapter. The
   correctness-critical mesh codec, gossip, and trust logic are all in Rust and tested
-  off-device. On iOS the adapter is a degraded form (GATT or legacy advertising,
-  foreground-limited) that is testable on the iPhone for end-to-end app validation; the full
-  237 B extended-advertising form is an Android-adapter refinement for when a device is
-  available. Records flow device-to-device, through the gate, onto the map with trust badges.
+  off-device. On Android the adapter targets the full 237 B extended-advertising form (verify
+  the P30 chipset supports it at slice start; fall back to legacy advertising if absent). The
+  degraded iOS form (GATT or legacy advertising, foreground-limited) is built at an Air
+  session for cross-OS end-to-end validation. Records flow device-to-device, through the gate,
+  onto the map with trust badges.
 
 **Fast-follow (boundaries drawn here, built after the core milestone):** slice 4, the capture
 vertical (F3 plus F1-dumb plus the SoftAP/USB bulk path, proving a capture pointer is the same
 gated record as a hazard); slice 5, power and duty-cycle plus the dark-map default; slice 6,
-the LoRa companion (an additive transport backend). The Android full-capability tier and iOS
-hardening run as parallel tracks once the ports stabilize.
+the LoRa companion (an additive transport backend). The iOS capped tier and iOS hardening run
+as a periodic parallel track at Air sessions once the ports stabilize; Android full-radio
+refinements continue on the dev device.
 
 ## 13. Load-bearing risks
 
@@ -320,15 +368,16 @@ with a test that runs both policies over the same recorded rungs.
 **MVP-critical (the core milestone, slices 0 to 3):** `apoc-geo`, `apoc-types`, `apoc-map`
 (read), `apoc-routing`, `apoc-positioning` (pdr plus gnss_gate plus mapmatch-as-secondary
 plus reanchor-GNSS-primary plus `SpineUnInverted` plus belief/cone), `apoc-trust`,
-`apoc-mesh`, `apoc-ffi`, the Flutter app/state/ui/map_renderer/bridge, the iOS
+`apoc-mesh`, `apoc-ffi`, the Flutter app/state/ui/map_renderer/bridge, the Android
 sensor/gnss/ble/power adapters, and the `region-baker`. Capture (F3 and F1-dumb) has its
 boundaries drawn here and is built in the fast-follow.
 
 **Designed-in but deferred or feature-gated off:** `SpineInverted` (map-heading, failed,
 gated), the map-conflict monitor (B2), adaptive trust-driven cadence (B3), pose robustness
 (B4), L3 vision-plus-peer re-anchor, F1 reconstruction (a future consumer of the bulk store,
-gated behind the `bulk_manifest_hash` field), the Android full-radio tier, and the LoRa
-companion node.
+gated behind the `bulk_manifest_hash` field), the iOS capped adapter tier (periodic verify
+and deploy via the Intel MacBook Air, viable to about April 2027), and the LoRa companion
+node.
 
 ## 15. Non-goals
 
